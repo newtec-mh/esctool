@@ -1,3 +1,17 @@
+/**
+ * @file main.cpp
+ * 
+ * @author Martin Hejnfelt (mh@newtec.dk)
+ * @brief EtherCAT Slave Configuration Tool
+ * @version 0.1
+ * @date 2022-10-06
+ * 
+ * @copyright Copyright (c) 2022 Newtec A/S
+ *
+ * Obviously missing (amongst others):
+ * Size check compared to EEPROM size
+ * Many categories and XML elements
+ */
 #include <stdio.h>
 #include <sys/mman.h>
 #include <stdlib.h>
@@ -28,8 +42,9 @@
 #define EC_SII_EEPROM_SIZE_OFFSET_BYTE		(0x3E * 2)
 #define EC_SII_EEPROM_VERSION_OFFSET_BYTE	(0x3F * 2)
 #define EC_SII_EEPROM_FIRST_CAT_HDR_OFFSET_BYTE	(0x40 * 2)
-#define EC_SII_EEPROM_SIZE			(1024)
 #define EC_SII_CONFIGDATA_SIZEB			(16)
+
+uint32_t EC_SII_EEPROM_SIZE			(1024);
 
 // SII / EEPROM Category definitions, note these are (mostly) in decimal
 #define EEPROMCategoryNOP		(0)
@@ -54,6 +69,28 @@
 // Vendor specific			0x3000-0xFFFE
 // End					0xFFFF
 
+
+uint8_t getCoEDataType(const char* dt) {
+	if(0 == strcmp(dt,"BOOL") || 0 == strcmp(dt,"BIT")) {
+		return 0x01;
+	} else if(0 == strcmp(dt,"SINT")) {
+		return 0x02;
+	} else if(0 == strcmp(dt,"INT")) {
+		return 0x03;
+	} else if(0 == strcmp(dt,"DINT")) {
+		return 0x04;
+	} else if(0 == strcmp(dt,"USINT")) {
+		return 0x05;
+	} else if(0 == strcmp(dt,"UINT")) {
+		return 0x06;
+	} else if(0 == strcmp(dt,"UDINT")) {
+		return 0x07;
+	} else if(0 == strcmp(dt,"REAL")) {
+		return 0x08;
+	}
+	return 0x0;
+}
+
 unsigned char crc8(unsigned char* ptr, unsigned char len)
 {
 	unsigned char i;
@@ -70,6 +107,8 @@ unsigned char crc8(unsigned char* ptr, unsigned char len)
 	}
 	return (crc);
 }
+
+bool verbose = false;
 
 uint8_t* sii_eeprom = NULL;
 
@@ -89,8 +128,8 @@ struct DcOpmode {
 	uint32_t cycletimesync1 = 0;
 	uint32_t shifttimesync0 = 0;
 	uint32_t shifttimesync1 = 0;
-	int16_t cycletimesync0factor = 1;
-	int16_t cycletimesync1factor = 1;
+	int16_t cycletimesync0factor = 0;
+	int16_t cycletimesync1factor = 0;
 };
 
 struct DistributedClock {
@@ -141,8 +180,8 @@ struct PdoEntry {
 struct Pdo {
 	bool fixed = false;
 	bool mandatory = false;
-	int syncmanager = 2;
-	int syncunit = 2;
+	int syncmanager = 0;
+	int syncunit = 0;
 	const char* index = NULL;
 	const char* name = NULL;
 	std::list<PdoEntry*> entries;
@@ -171,7 +210,7 @@ std::list<Device*> devices;
 void printUsage(const char* name) {
 	printf("Usage: %s [options] --input <input-file>\n",name);
 	printf("Options:\n");
-	printf("\t --decode : Decode a binary SII file\n");
+	printf("\t --decode : Decode and print a binary SII file\n");
 	printf("\n");
 }
 
@@ -320,7 +359,7 @@ void parseXMLPdo(const tinyxml2::XMLElement* xmlpdo, std::list<Pdo*>* pdolist) {
 				} else
 				if(0 == strcmp(entrychild->Name(),"BitLen")) {
 					entry->bitlen = entrychild->IntText();
-					printf("Device/%s/Entry/BitLen: '%d'\n",xmlpdo->Name(),entry->bitlen);
+					printf("Device/%s/Entry/BitLen: %d\n",xmlpdo->Name(),entry->bitlen);
 				} else
 				if(0 == strcmp(entrychild->Name(),"SubIndex")) {
 					entry->subindex = entrychild->IntText(); // TODO: HexDec
@@ -524,6 +563,9 @@ void parseXMLDevice(const tinyxml2::XMLElement* xmldevice) {
 				} else
 				if(0 == strcmp(eepchild->Name(),"ByteSize")) {
 					dev->eepromsize = eepchild->UnsignedText();
+					printf("Device/Eeprom/ByteSize: %u\n",dev->eepromsize);
+					if(EC_SII_EEPROM_SIZE < dev->eepromsize)
+						EC_SII_EEPROM_SIZE = dev->eepromsize;
 				} else
 				{
 					printf("Unhandled Device/Eeprom element: '%s' = '%s'\n",eepchild->Name(),eepchild->GetText());
@@ -730,11 +772,19 @@ int encodeSII(const std::string& file, std::string output = "") {
 				*(p++) = EEPROMCategorySTRINGS & 0xFF;
 				*(p++) = (EEPROMCategorySTRINGS >> 8) & 0xFF;
 
+ 				// Default: two strings, device group name first, then device name
+				std::list<const char*> strings;
+				strings.push_back(dev->group->type);
+				strings.push_back(dev->name);
+
 				// First category word size (Word 0x041)
 				// +1 for the number of strings and +1 for the
 				// string length of each string (of which there are two) so +3
-				uint16_t stringcatlen = strlen(dev->group->name) +
-					strlen(dev->name) + 3;
+				uint16_t stringcatlen = 0x1; // For the number of strings byte
+				for(auto str : strings) {
+					stringcatlen += strlen(str);
+					++stringcatlen; // The stringlength byte
+				}
 
 				// Pad to complete word
 				uint16_t stringcatpad = (stringcatlen % 2);
@@ -744,15 +794,13 @@ int encodeSII(const std::string& file, std::string output = "") {
 				*(p++) = (stringcatlen >> 8) & 0xFF;
 
 				// Create STRINGS category (ETG2000 Table 6)
-				*(p++) = 0x2; // Default: two strings, device group name first, then device name
-				*(p++) = strlen(dev->group->name); // First string length (no '\0')
-				for(uint8_t i = 0; i < strlen(dev->group->name); ++i) {
-					*(p++) = dev->group->name[i];
-				}
-
-				*(p++) = strlen(dev->name); // Next string length
-				for(uint8_t i = 0; i < strlen(dev->name); ++i) {
-					*(p++) = dev->name[i];
+				*(p++) = strings.size() & 0xFF;
+				for(auto str : strings) {
+					uint8_t len = strlen(str);
+					*(p++) = len;
+					for(uint8_t i = 0; i < len; ++i) {
+						*(p++) = str[i];
+					}
 				}
 				// Adjust write pointer for padding
 				p += stringcatpad;
@@ -924,7 +972,7 @@ int encodeSII(const std::string& file, std::string output = "") {
 					// Each DC Opmode is 0xC words
 					uint16_t dccatlen = dev->dc->opmodes.size() * 0xC;
 					*(p++) = dccatlen & 0xFF;
-					*(p++) = (dccatlen >> 8) & 0x0;
+					*(p++) = (dccatlen >> 8) & 0xFF;
 
 					for(auto dc : dev->dc->opmodes) {
 						uint32_t cts0 = dc->cycletimesync0;
@@ -961,21 +1009,110 @@ int encodeSII(const std::string& file, std::string output = "") {
 						*(p++) = 0x0; // Description index into STRINGS, unsupported TODO
 						p += 4; // Reserved
 					}
-					// TODO: Verify this
 				}
 
-				*(p++) = 0xFF;
+				// TXPDO category if needed
+				if(!dev->txpdo.empty())
+				{
+					for(Pdo* pdo : dev->txpdo) {
+						*(p++) = EEPROMCategoryTXPDO & 0xFF;
+						*(p++) = (EEPROMCategoryTXPDO >> 8) & 0xFF;
+						// Each PDO entry takes 8 bytes, and a "header" of 8 bytes
+						uint16_t txpdocatlen = ((pdo->entries.size() * 0x8) + 8) >> 1;
+						*(p++) = txpdocatlen & 0xFF;
+						*(p++) = (txpdocatlen >> 8) & 0xFF;
+
+						uint16_t index = EC_SII_HexToUint32(pdo->index) & 0xFFFF; // HexDec
+						*(p++) = index & 0xFF;
+						*(p++) = (index >> 8) & 0xFF;
+			
+						*(p++) = pdo->entries.size() & 0xFF;
+						*(p++) = pdo->syncmanager;
+						*(p++) = 0x0; // TODO Fixme, DC
+						*(p++) = 0x0; // TODO Name index to STRINGS
+
+						uint16_t flags = 0x0;
+						if(pdo->mandatory) flags |= 0x0001;
+						if(pdo->fixed) flags |= 0x0010;
+						// TODO more flags...
+						*(p++) = flags & 0xFF;
+						*(p++) = (flags >> 8) & 0xFF;
+
+						for(PdoEntry* entry : pdo->entries) {
+							index = EC_SII_HexToUint32(entry->index) & 0xFFFF;
+							*(p++) = index & 0xFF;
+							*(p++) = (index >> 8) & 0xFF;
+							*(p++) = entry->subindex & 0xFF;
+							*(p++) = 0x0; // TODO Name entry into STRINGS
+							*(p++) = getCoEDataType(entry->datatype);
+							*(p++) = entry->bitlen & 0xFF;
+							*(p++) = 0x0; // Reserved, flags
+							*(p++) = 0x0; // Reserved, flags
+						}
+					}
+				}
+
+				// RXPDO category if needed
+				if(!dev->rxpdo.empty())
+				{
+					for(Pdo* pdo : dev->rxpdo) {
+						*(p++) = EEPROMCategoryRXPDO & 0xFF;
+						*(p++) = (EEPROMCategoryRXPDO >> 8) & 0xFF;
+						// Each PDO entry takes 8 bytes, and a "header" of 8 bytes
+						uint16_t rxpdocatlen = ((pdo->entries.size() * 0x8) + 8) >> 1;
+						*(p++) = rxpdocatlen & 0xFF;
+						*(p++) = (rxpdocatlen >> 8) & 0xFF;
+
+						uint16_t index = EC_SII_HexToUint32(pdo->index) & 0xFFFF; // HexDec
+						*(p++) = index & 0xFF;
+						*(p++) = (index >> 8) & 0xFF;
+						*(p++) = pdo->entries.size() & 0xFF;
+						*(p++) = pdo->syncmanager;
+						*(p++) = 0x0; // TODO Fixme, DC
+						*(p++) = 0x0; // TODO Name index to STRINGS
+
+						uint16_t flags = 0x0;
+						if(pdo->mandatory) flags |= 0x0001;
+						if(pdo->fixed) flags |= 0x0010;
+						// TODO more flags...
+						*(p++) = flags & 0xFF;
+						*(p++) = (flags >> 8) & 0xFF;
+
+						for(PdoEntry* entry : pdo->entries) {
+							index = EC_SII_HexToUint32(entry->index) & 0xFFFF;
+							*(p++) = index & 0xFF;
+							*(p++) = (index >> 8) & 0xFF;
+							*(p++) = entry->subindex & 0xFF;
+							*(p++) = 0x0; // TODO Name entry into STRINGS
+							*(p++) = getCoEDataType(entry->datatype);
+							*(p++) = entry->bitlen & 0xFF;
+							*(p++) = 0x0; // Reserved, flags
+							*(p++) = 0x0; // Reserved, flags
+						}
+					}
+				}
+
+				*(p++) = 0xFF; // End
 				*(p++) = 0xFF;
 
-				// Print EEPROM data
-				for(uint16_t i = 0; i < 300;i=i+2)
-					printf("%04X / %04X: %.02X %.02X\n",i/2,i,sii_eeprom[i],sii_eeprom[i+1]);
+				if(verbose) {
+					printf("EEPROM contents:\n");
+					// Print EEPROM data
+					for(uint16_t i = 0; i < EC_SII_EEPROM_SIZE; i=i+2)
+						printf("%04X / %04X: %.02X %.02X\n",i/2,i,sii_eeprom[i],sii_eeprom[i+1]);
+				}
 
-				for(uint32_t i; i < EC_SII_EEPROM_SIZE; ++i) out << sii_eeprom[i];
+				printf("Writing EEPROM...");
+				for(uint32_t i = 0; i < EC_SII_EEPROM_SIZE; ++i) out << sii_eeprom[i];
+				printf("Done\n");
+				out.sync_with_stdio();
+				out.close();
+
+				delete sii_eeprom;
 			} else {
 				printf("Failed writing eepro data to '%s'\n",output.c_str());
 			}
-			out.close();
+			printf("Finished\n");
 		} else {
 			printf("No 'Devices' nodes could be parsed\n");
 		}
@@ -1014,7 +1151,7 @@ int decodeSII(const std::string& file) {
 		printf("Could not open '%s'\n",file.c_str());
 		return 1;
 	}
-
+	printf("Decoding SII from '%s'\n",file.c_str());
 	struct stat statbuf;
 	int err = fstat(fd, &statbuf);
 	if(err < 0){
@@ -1036,7 +1173,7 @@ int decodeSII(const std::string& file) {
 		if(i < EC_SII_CONFIGDATA_SIZEB-1) printf(" ");
 		// TODO verify checksum
 	}
-	printf("\033[0m' \033[0;36m[Esi: DeviceType:Eeprom:ConfigData]\033[0m\n");
+	printf("\033[0m' \033[0;36m[Esi:DeviceType:Eeprom:ConfigData]\033[0m\n");
 	printf("Vendor: \033[0;32m0x%.08X \033[0;36m[Esi:EtherCATInfo:Vendor]\033[0m\n",*(uint32_t*)ptr);
 	ptr += 4;
 	printf("Product: \033[0;32m0x%.08X \033[0;36m[Esi:DeviceType:Type:ProductCode]\033[0m\n",*(uint32_t*)ptr);
@@ -1056,7 +1193,6 @@ int decodeSII(const std::string& file) {
 		printf("--------------------------\n");
 		printf("Category %d: \033[0;31m%s\033[0m (%d) - %d words\n\n",categoryNo,
 			getCategoryString(*category),*category,categorySizeW);
-//		printf("Next category in %d bytes\n",(categorySizeW*2)+4);
 		nextCategoryPtr += (categorySizeW*2)+4; // +4 = header and category size
 		ptr += 4;
 		switch(*category) {
@@ -1113,8 +1249,8 @@ int decodeSII(const std::string& file) {
 				uint16_t ebuscurrent = *ptr++;
 				ebuscurrent += (*ptr++) << 8;
 				printf("\n");
-				printf("Ebus current: %d mA \033[0;36m[Esi:Info:Electrical:EBusCurrent]\033[0m\n",ebuscurrent);
-				printf("Group index (compatibility duplicate): 0x%.02X\n",*ptr++);
+				printf("Ebus current: \033[0;32m%d mA\033[0m \033[0;36m[Esi:Info:Electrical:EBusCurrent]\033[0m\n",ebuscurrent);
+				printf("Group index (compatibility duplicate): \033[0;32m0x%.02X\033[0m\n",*ptr++);
 				ptr++; // Reserved
 				printf("\n");
 				uint16_t physicalport = *ptr++;
@@ -1145,7 +1281,7 @@ int decodeSII(const std::string& file) {
 			break;
 			case EEPROMCategoryFMMU: {
 				uint16_t fmmucnt = categorySizeW*2;
-				printf("%d FMMUs described \033[0;36m[Esi:DeviceType:Fmmu]\033[0m\n",fmmucnt);
+				printf("%d FMMUs described \033[0;36m[Esi:DeviceType:Fmmu]\033[0m\n\n",fmmucnt);
 				for(uint16_t fmmu = 0; fmmu < fmmucnt; ++fmmu) {
 					uint8_t fmmuconfig = *(ptr++);
 					printf("\033[0;33mFMMU%d\033[0m: \033[0;32m",fmmu);
@@ -1162,10 +1298,10 @@ int decodeSII(const std::string& file) {
 			break;
 			case EEPROMCategorySyncM: {
 				uint16_t smcnt = (categorySizeW*2)/8;
-				printf("%d SyncManagers described\n",smcnt);
+				printf("%d SyncManagers described\n\n",smcnt);
 				for(uint16_t sm; sm < smcnt; ++sm) {
 					printf("\033[0;33mSyncManager %d\033[0m:\n",sm);
-					printf("Physical Start Address: \033[0;32m0x%.04X \033[0;36m[Esi: DeviceType:Sm:StartAddress]\033[0m\n",*(uint16_t*)(ptr));
+					printf("Physical Start Address: \033[0;32m0x%.04X \033[0;36m[Esi:DeviceType:Sm:StartAddress]\033[0m\n",*(uint16_t*)(ptr));
 					ptr += 2;
 					printf("Length: \033[0;32m0x%.04X \033[0;36m[Esi:DeviceType:Sm:DefaultSize]\033[0m\n",*(uint16_t*)(ptr));
 					ptr += 2;
@@ -1202,11 +1338,81 @@ int decodeSII(const std::string& file) {
 				}
 			}
 			break;
+			case EEPROMCategoryDC: {
+				uint16_t dccnt = (categorySizeW*2)/24;
+				printf("%d clock cycles described\n\n",dccnt);
+				for(uint16_t dc = 0; dc < dccnt; ++dc) {
+					printf("\033[0;33mDC %d\033[0m:\n",dc);
+					printf("CycleTime0: \033[0;32m%u \033[0;36m[Esi:Dc:OpMode:CycleTimeSync0]\033[0m\n",*(uint32_t*)ptr);
+					ptr += 4;
+					printf("ShiftTime0: \033[0;32m%u \033[0;36m[Esi:Dc:OpMode:ShiftTimeSync0]\033[0m\n",*(uint32_t*)ptr);
+					ptr += 4;
+					printf("ShiftTime1: \033[0;32m%u \033[0;36m[Esi:Dc:OpMode:ShiftTimeSync1]\033[0m\n",*(uint32_t*)ptr);
+					ptr += 4;
+					printf("CycleTimeSync1@Factor: \033[0;32m%d \033[0;36m[Esi:Dc:OpMode:CycleTimeSync1@Factor]\033[0m\n",*(int16_t*)ptr);
+					ptr += 2;
+					printf("AssignActivate: \033[0;32m0x%.04X \033[0;36m[Esi:Dc:OpMode:AssignActivate]\033[0m\n",*(uint16_t*)ptr);
+					ptr += 2;
+					printf("CycleTimeSync0@Factor: \033[0;32m%d \033[0;36m[Esi:Dc:OpMode:CycleTimeSync0@Factor]\033[0m\n",*(int16_t*)ptr);
+					ptr += 2;
+					printf("Name index: \033[0;32m%d \033[0;36m[Esi:Dc:OpMode:Name]\033[0m\n",*(ptr++));
+					printf("Description index: \033[0;32m%d \033[0;36m[Esi:Dc:OpMode:Desc]\033[0m\n",*(ptr++));
+					ptr += 4; // Reserved
+					if(dc < dccnt-1)printf("\n");
+				}
+			}
+			break;
+			case EEPROMCategoryTXPDO:
+			case EEPROMCategoryRXPDO: {
+				printf("Index: \033[0;32m0x%.04X\033[0m\n",*(uint16_t*)ptr);
+				ptr += 2;
+				uint8_t entries = *(ptr++);
+				printf("%d entries\n",entries);
+				printf("Related to SyncManager #\033[0;32m%d\033[0m\n",*(ptr++));
+				printf("Related to DC #\033[0;32m%d\033[0m\n",*(ptr++));
+				printf("Name index: \033[0;32m%d\033[0m\n",*(ptr++));
+				uint16_t flags = *(uint16_t*)ptr;
+				if(flags) {
+					printf("Flags:\n");
+					if(flags & 0x0001) printf("- PdoMandatory \033[0;36m[Esi:RTxPdo@Mandatory]\033[0m\n");
+					if(flags & 0x0002) printf("- PdoDefault \033[0;36m[Esi:RTxPdo@Sm]\033[0m\n");
+					if(flags & 0x0004) printf("- Reserved (PdoOversample)\n");
+					if(flags & 0x0010) printf("- PdoFixedContent \033[0;36m[Esi:RTxPdo@Fixed]\033[0m\n");
+					if(flags & 0x0020) printf("- PdoVirtualContent \033[0;36m[Esi:RTxPdo@Virtual]\033[0m\n");
+					if(flags & 0x0040) printf("- Reserved (PdoDownloadAnyway)\n");
+					if(flags & 0x0080) printf("- Reserved (PdoFromModule)\n");
+					if(flags & 0x0100) printf("- PdoModuleAlign \033[0;36m[Esi:Slots:ModulePdoGroup@Alignment]\033[0m\n");
+					if(flags & 0x0200) printf("- PdoDependOnSlot \033[0;36m[Esi:RTxPdo:Index@DependOnSlot]\033[0m\n");
+					if(flags & 0x0400) printf("- PdoDependOnSlotGroup \033[0;36m[Esi:RTxPdo:Index@DependOnSlotGroup]\033[0m\n");
+					if(flags & 0x0800) printf("- PdoOverwrittenByModule \033[0;36m[Esi:RTxPdo@OverwrittenByModule]\033[0m\n");
+					if(flags & 0x1000) printf("- Reserved (PdoConfigurable)\n");
+					if(flags & 0x2000) printf("- Reserved (PdoAutoPdoName)\n");
+					if(flags & 0x4000) printf("- Reserved (PdoDisAutoExclude)\n");
+					if(flags & 0x8000) printf("- Reserved (PdoWritable)\n");
+				}
+				ptr += 2;
+				printf("\n");
+				if(verbose) {
+					for(uint8_t entry = 0; entry < entries; ++entry) {
+						printf("Index: \033[0;32m0x%.04X \033[0;36m[Esi:PdoType:EntryType@Index]\033[0m\n",*(uint16_t*)ptr);
+						ptr += 2;
+						printf("SubIndex: \033[0;32m0x%.02X \033[0;36m[Esi:PdoType:EntryType@Subindex]\033[0m\n",*(ptr)++);
+						printf("Name Index: \033[0;32m0x%.02X \033[0;36m[Esi:PdoType:EntryType@Name]\033[0m\n",*(ptr)++);
+						printf("Data Type (CoE index): \033[0;32m0x%.02X \033[0;36m[Esi:PdoType:EntryType@DataType]\033[0m\n",*(ptr)++);
+						printf("BitLen: \033[0;32m0x%.02X \033[0;36m[Esi:PdoType:EntryType@DataType]\033[0m\n",*(ptr)++);
+						ptr += 2; // Reserved Flags
+						//ptr += 8; // 8 bytes per entry
+						if(entry < entries-1) printf("\n");
+					}
+				}
+			}
+			break;
 		}
 		ptr = nextCategoryPtr;
 		category = (uint16_t*)ptr;
 		++categoryNo;
 	}
+	printf("--------------------------\n");
 
 	close(fd);
 
@@ -1231,6 +1437,11 @@ int main(int argc, char* argv[])
 		   0 == strcmp(argv[i],"-i"))
 		{
 			inputfile = argv[++i];
+		} else
+		if(0 == strcmp(argv[i],"--verbose") ||
+		   0 == strcmp(argv[i],"-v"))
+		{
+			verbose = true;
 		} else
 		if(0 == strcmp(argv[i],"--output") ||
 		   0 == strcmp(argv[i],"-o"))
