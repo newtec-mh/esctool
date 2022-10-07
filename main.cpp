@@ -2,7 +2,7 @@
  * @file main.cpp
  * 
  * @author Martin Hejnfelt (mh@newtec.dk)
- * @brief EtherCAT Slave Configuration Tool
+ * @brief EtherCAT Slave Controller tool
  * @version 0.1
  * @date 2022-10-06
  * 
@@ -28,10 +28,13 @@
 #include <vector>
 #include "tinyxml2/tinyxml2.h"
 
-#define ESI_ROOTNODE_NAME	"EtherCATInfo"
-#define ESI_VENDOR_NAME		"Vendor"
-#define ESI_ID_NAME		"Id"
-#define ESI_DEVICE_TYPE_NAME	"Type"
+#define APP_NAME				"esctool"
+#define APP_VERSION				"0.1"
+
+#define ESI_ROOTNODE_NAME			"EtherCATInfo"
+#define ESI_VENDOR_NAME				"Vendor"
+#define ESI_ID_NAME				"Id"
+#define ESI_DEVICE_TYPE_NAME			"Type"
 #define ESI_DEVICE_PRODUCTCODE_ATTR_NAME	"ProductCode"
 #define ESI_DEVICE_REVISIONNO_ATTR_NAME		"RevisionNo"
 
@@ -91,6 +94,28 @@ uint8_t getCoEDataType(const char* dt) {
 	return 0x0;
 }
 
+const char* getCategoryString(const uint16_t category) {
+	switch(category) {
+		case EEPROMCategorySTRINGS: return "STRINGS";
+		case EEPROMCategoryDataTypes: return "DataTypes";
+		case EEPROMCategoryGeneral: return "General";
+		case EEPROMCategoryFMMU: return "FMMU";
+		case EEPROMCategorySyncM: return "SyncM";
+		case EEPROMCategoryFMMUX: return "FMMUX";
+		case EEPROMCategorySyncUnit: return "SyncUnit";
+		case EEPROMCategoryTXPDO: return "TXPDO";
+		case EEPROMCategoryRXPDO: return "RXPDO";
+		case EEPROMCategoryDC: return "Distributed Clock/DC";
+		case EEPROMCategoryTimeouts: return "Timeouts";
+		case EEPROMCategoryDictionary: return "Dictionary";
+		case EEPROMCategoryHardware: return "Hardware";
+		case EEPROMCategoryVendorInformation: return "Vendor Information";
+		case EEPROMCategoryImages: return "Images";
+		default: return "UNKNOWN";
+	}
+	return "NULL";
+};
+
 unsigned char crc8(unsigned char* ptr, unsigned char len)
 {
 	unsigned char i;
@@ -109,6 +134,9 @@ unsigned char crc8(unsigned char* ptr, unsigned char len)
 }
 
 bool verbose = false;
+bool writeobjectdict = false;
+bool nosii = false;
+std::string objectdictfile = "objectlist.c";
 
 uint8_t* sii_eeprom = NULL;
 
@@ -187,6 +215,48 @@ struct Pdo {
 	std::list<PdoEntry*> entries;
 };
 
+struct ChannelInfo {
+	uint32_t profileNo = 0;
+};
+
+struct DataType {
+	const char* name = NULL;
+	uint16_t bitsize = 0;
+};
+
+struct ObjectAccess {
+	const char* access = NULL;
+	const char* readrestrictions = NULL;
+	const char* writerestrictions = NULL;
+};
+
+struct ObjectFlags {
+	const char* category = NULL;
+	ObjectAccess* access = NULL;
+	const char* pdomapping = NULL;
+	const char* sdoaccess = NULL;
+};
+
+struct Object {
+	const char* index = NULL;
+	const char* name = NULL;
+	const char* type = NULL;
+	uint32_t bitsize = 0;
+	const char* defaultdata = NULL;
+	ObjectFlags* flags = NULL;
+	Object* subitem = NULL;
+};
+
+struct Dictionary {
+	std::list<DataType*> datatypes;
+	std::list<Object*> objects;
+};
+
+struct Profile {
+	ChannelInfo* channelinfo;
+	Dictionary* dictionary;
+};
+
 struct Device {
 	uint32_t product_code = 0x0;
 	uint32_t revision_no = 0x0;
@@ -202,15 +272,19 @@ struct Device {
 	uint8_t configdata[EC_SII_CONFIGDATA_SIZEB];
 	std::list<Pdo*> txpdo;
 	std::list<Pdo*> rxpdo;
+	Profile* profile;
 };
 
 std::list<Group*> groups;
 std::list<Device*> devices;
 
 void printUsage(const char* name) {
-	printf("Usage: %s [options] --input <input-file>\n",name);
+	printf("Usage: %s [options] --input/-i <input-file>\n",name);
 	printf("Options:\n");
 	printf("\t --decode : Decode and print a binary SII file\n");
+	printf("\t --verbose/-v : Flood some more information to stdout when applicable\n");
+	printf("\t --nosii/-n : Don't generate SII EEPROM binary (only for !--decode)\n");
+	printf("\t --dictionary/-d : Generate object dictionary (default if --nosii and !--decode)\n");
 	printf("\n");
 }
 
@@ -351,23 +425,23 @@ void parseXMLPdo(const tinyxml2::XMLElement* xmlpdo, std::list<Pdo*>* pdolist) {
 			{
 				if(0 == strcmp(entrychild->Name(),"Name")) {
 					entry->name = entrychild->GetText();
-					printf("Device/%s/Entry/Name: '%s'\n",xmlpdo->Name(),entry->name);
+					if(verbose) printf("Device/%s/Entry/Name: '%s'\n",xmlpdo->Name(),entry->name);
 				} else
 				if(0 == strcmp(entrychild->Name(),"Index")) {
 					entry->index = entrychild->GetText();
-					printf("Device/%s/Entry/Index: '%s'\n",xmlpdo->Name(),entry->index);
+					if(verbose) printf("Device/%s/Entry/Index: '%s'\n",xmlpdo->Name(),entry->index);
 				} else
 				if(0 == strcmp(entrychild->Name(),"BitLen")) {
 					entry->bitlen = entrychild->IntText();
-					printf("Device/%s/Entry/BitLen: %d\n",xmlpdo->Name(),entry->bitlen);
+					if(verbose) printf("Device/%s/Entry/BitLen: %d\n",xmlpdo->Name(),entry->bitlen);
 				} else
 				if(0 == strcmp(entrychild->Name(),"SubIndex")) {
 					entry->subindex = entrychild->IntText(); // TODO: HexDec
-					printf("Device/%s/Entry/SubIndex: '%d'\n",xmlpdo->Name(),entry->subindex);
+					if(verbose) printf("Device/%s/Entry/SubIndex: '%d'\n",xmlpdo->Name(),entry->subindex);
 				} else
 				if(0 == strcmp(entrychild->Name(),"DataType")) {
 					entry->datatype = entrychild->GetText();
-					printf("Device/%s/Entry/DataType: '%s'\n",xmlpdo->Name(),entry->datatype);
+					if(verbose) printf("Device/%s/Entry/DataType: '%s'\n",xmlpdo->Name(),entry->datatype);
 				} else
 				{
 					printf("Unhandled Device/%s/Entry Element: '%s' = '%s'\n",xmlpdo->Name(),entrychild->Name(),entrychild->GetText());
@@ -401,7 +475,7 @@ void parseXMLDistributedClock(const tinyxml2::XMLElement* xmldc, DistributedCloc
 				} else
 				if(0 == strcmp(dcopmodechild->Name(),"CycleTimeSync0")) {
 					opmode->cycletimesync0 = dcopmodechild->UnsignedText();
-					printf("Device/Dc/Opmode/CycleTimeSync0: %u\n",opmode->cycletimesync0);
+					if(verbose) printf("Device/Dc/Opmode/CycleTimeSync0: %u\n",opmode->cycletimesync0);
 					for (const tinyxml2::XMLAttribute* cts0attr = dcopmodechild->FirstAttribute();
 						cts0attr != 0; cts0attr = cts0attr->Next())
 					{
@@ -415,7 +489,7 @@ void parseXMLDistributedClock(const tinyxml2::XMLElement* xmldc, DistributedCloc
 				} else
 				if(0 == strcmp(dcopmodechild->Name(),"CycleTimeSync1")) {
 					opmode->cycletimesync1 = dcopmodechild->UnsignedText();
-					printf("Device/Dc/Opmode/CycleTimeSync1: %u\n",opmode->cycletimesync1);
+					if(verbose) printf("Device/Dc/Opmode/CycleTimeSync1: %u\n",opmode->cycletimesync1);
 					for (const tinyxml2::XMLAttribute* cts1attr = dcopmodechild->FirstAttribute();
 						cts1attr != 0; cts1attr = cts1attr->Next())
 					{
@@ -429,7 +503,7 @@ void parseXMLDistributedClock(const tinyxml2::XMLElement* xmldc, DistributedCloc
 				} else
 				if(0 == strcmp(dcopmodechild->Name(),"ShiftTimeSync0")) {
 					opmode->shifttimesync0 = dcopmodechild->UnsignedText();
-					printf("Device/Dc/Opmode/ShiftTimeSync0: %u\n",opmode->shifttimesync0);
+					if(verbose) printf("Device/Dc/Opmode/ShiftTimeSync0: %u\n",opmode->shifttimesync0);
 					for (const tinyxml2::XMLAttribute* sts0attr = dcopmodechild->FirstAttribute();
 						sts0attr != 0; sts0attr = sts0attr->Next())
 					{
@@ -438,7 +512,7 @@ void parseXMLDistributedClock(const tinyxml2::XMLElement* xmldc, DistributedCloc
 				} else
 				if(0 == strcmp(dcopmodechild->Name(),"ShiftTimeSync1")) {
 					opmode->shifttimesync1 = dcopmodechild->UnsignedText();
-					printf("Device/Dc/Opmode/ShiftTimeSync1: %u\n",opmode->shifttimesync1);
+					if(verbose) printf("Device/Dc/Opmode/ShiftTimeSync1: %u\n",opmode->shifttimesync1);
 					for (const tinyxml2::XMLAttribute* sts1attr = dcopmodechild->FirstAttribute();
 						sts1attr != 0; sts1attr = sts1attr->Next())
 					{
@@ -461,8 +535,122 @@ void parseXMLDistributedClock(const tinyxml2::XMLElement* xmldc, DistributedCloc
 	}
 }
 
+void parseXMLObject(const tinyxml2::XMLElement* xmlobject, Dictionary* dict = NULL, Object* parent = NULL) {
+	Object* obj = new Object;
+	for (const tinyxml2::XMLElement* objchild = xmlobject->FirstChildElement();
+		objchild != 0; objchild = objchild->NextSiblingElement())
+	{
+		if(0 == strcmp(objchild->Name(),"Index")) {
+			obj->index = objchild->GetText();
+		} else
+		if(0 == strcmp(objchild->Name(),"Name")) {
+			obj->name = objchild->GetText();
+		} else
+		if(0 == strcmp(objchild->Name(),"Type")) {
+			obj->type = objchild->GetText();
+		} else
+		if(0 == strcmp(objchild->Name(),"BitSize")) {
+			obj->bitsize = objchild->IntText();
+		} else
+		if(0 == strcmp(objchild->Name(),"Info")) {
+			for (const tinyxml2::XMLElement* infochild = objchild->FirstChildElement();
+				infochild != 0; infochild = infochild->NextSiblingElement())
+			{
+				if(0 == strcmp(infochild->Name(),"DefaultData")) {
+					obj->defaultdata = infochild->GetText();
+				} else
+				if(0 == strcmp(infochild->Name(),"SubItem")) {
+					parseXMLObject(objchild,NULL,obj);
+				} else
+				{
+					printf("Unhandled Device/Profile/Objects/Object/Info element: '%s' = '%s'\n",objchild->Name(),objchild->GetText());
+				}
+			}
+		} else
+		if(0 == strcmp(objchild->Name(),"Flags")) {
+			ObjectFlags* flags = new ObjectFlags;
+			for (const tinyxml2::XMLElement* flagschild = objchild->FirstChildElement();
+				flagschild != 0; flagschild = flagschild->NextSiblingElement())
+			{
+				if(0 == strcmp(flagschild->Name(),"Access")) {
+					ObjectAccess* access = new ObjectAccess;
+					access->access = flagschild->GetText();
+					for (const tinyxml2::XMLAttribute* attr = flagschild->FirstAttribute();
+						attr != 0; attr = attr->Next())
+					{
+						if(0 == strcmp(attr->Name(),"ReadRestrictions")) {
+							access->readrestrictions = attr->Value();
+						} else
+						if(0 == strcmp(attr->Name(),"WriteRestrictions")) {
+							access->writerestrictions = attr->Value();
+						} else
+						{
+							printf("Unhandled Device/Profile/Objects/Object/Flags/Access Attribute: '%s' = '%s'\n",attr->Name(),attr->Value());
+						}
+					}
+					flags->access = access;
+				} else
+				if(0 == strcmp(flagschild->Name(),"Category")) {
+					flags->category = flagschild->GetText();
+				} else
+				if(0 == strcmp(flagschild->Name(),"PdoMapping")) {
+					flags->pdomapping = flagschild->GetText();
+				} else
+				if(0 == strcmp(flagschild->Name(),"SdoAccess")) {
+					flags->sdoaccess = flagschild->GetText();
+				} else
+				{
+					printf("Unhandled Device/Profile/Objects/Object/Flags element: '%s' = '%s'\n",objchild->Name(),objchild->GetText());
+				}
+
+			}
+			obj->flags = flags;
+		} else
+		if(0 == strcmp(objchild->Name(),"SubItem")) {
+			parseXMLObject(objchild,NULL,obj);
+		} else
+		{
+			printf("Unhandled Device/Profile/Objects/Object element: '%s' = '%s'\n",objchild->Name(),objchild->GetText());
+		}
+	}
+	if(parent != NULL) parent->subitem = obj;
+	else dict->objects.push_back(obj);
+}
+
+void parseXMLProfile(const tinyxml2::XMLElement* xmlprofile, Device *dev) {
+	Profile* profile = new Profile;
+	dev->profile = profile;
+	for (const tinyxml2::XMLElement* child = xmlprofile->FirstChildElement();
+		child != 0; child = child->NextSiblingElement())
+	{
+		if(0 == strcmp(child->Name(),"Dictionary")) {
+			Dictionary* dict = new Dictionary;
+			profile->dictionary = dict;
+			for (const tinyxml2::XMLElement* dictchild = child->FirstChildElement();
+				dictchild != 0; dictchild = dictchild->NextSiblingElement())
+			{
+				if(0 == strcmp(dictchild->Name(),"Objects")) {
+					for (const tinyxml2::XMLElement* objschild = dictchild->FirstChildElement();
+						objschild != 0; objschild = objschild->NextSiblingElement())
+					{
+						if(0 == strcmp(objschild->Name(),"Object")) {
+							parseXMLObject(objschild,dict);
+						} else
+						{
+							printf("Unhandled Device/Profile/Objects element: '%s' = '%s'\n",objschild->Name(),objschild->GetText());
+						}
+					}
+				}
+			}
+		} else
+		{
+			printf("Unhandled Device/Profile element: '%s' = '%s'\n",child->Name(),child->GetText());
+		}
+	}
+}
+
 void parseXMLDevice(const tinyxml2::XMLElement* xmldevice) {
-	Device* dev = new Device();
+	Device* dev = new Device;
 	memset(dev->configdata,0,EC_SII_CONFIGDATA_SIZEB);
 
 	for (const tinyxml2::XMLAttribute* attr = xmldevice->FirstAttribute();
@@ -587,7 +775,7 @@ void parseXMLDevice(const tinyxml2::XMLElement* xmldevice) {
 					sm->defaultsize = attr->UnsignedValue();
 					if(0 == sm->defaultsize) sm->defaultsize = EC_SII_HexToUint32(attr->Value());
 					if(0 == sm->defaultsize) printf("Failed to decipher SyncManager DefaultSize\n");
-					printf("Device/Sm/@DefaultSize: 0x%.04X\n",sm->defaultsize);
+					if(verbose) printf("Device/Sm/@DefaultSize: 0x%.04X\n",sm->defaultsize);
 				} else
 				if(0 == strcmp(attr->Name(),"Enable")) { // hexdecvalue
 					sm->enable = attr->UnsignedValue() > 0 ? true : false;
@@ -595,7 +783,7 @@ void parseXMLDevice(const tinyxml2::XMLElement* xmldevice) {
 				} else
 				if(0 == strcmp(attr->Name(),"ControlByte")) { // hexdecvalue
 					sm->controlbyte = (EC_SII_HexToUint32(attr->Value()) & 0xFF);
-					printf("Device/Sm/@ControlByte: 0x%.02X\n",sm->controlbyte);
+					if(verbose) printf("Device/Sm/@ControlByte: 0x%.02X\n",sm->controlbyte);
 				} else
 				if(0 == strcmp(attr->Name(),"StartAddress")) {
 					sm->startaddress = EC_SII_HexToUint32(attr->Value()) & 0xFFFF;
@@ -603,17 +791,20 @@ void parseXMLDevice(const tinyxml2::XMLElement* xmldevice) {
 				} else
 				if(0 == strcmp(attr->Name(),"MinSize")) {
 					sm->minsize = EC_SII_HexToUint32(attr->Value()) & 0xFFFF;
-					printf("Device/Sm/@MinSize: 0x%.04X\n",sm->minsize);
+					if(verbose) printf("Device/Sm/@MinSize: 0x%.04X\n",sm->minsize);
 				} else
 				if(0 == strcmp(attr->Name(),"MaxSize")) {
 					sm->maxsize = EC_SII_HexToUint32(attr->Value()) & 0xFFFF;
-					printf("Device/Sm/@MaxSize: 0x%.04X\n",sm->maxsize);
+					if(verbose) printf("Device/Sm/@MaxSize: 0x%.04X\n",sm->maxsize);
 				} else
 				{
 					printf("Unhandled Device/Sm Attribute: '%s' = '%s'\n",attr->Name(),attr->Value());
 				}
 			}
 			dev->syncmanagers.push_back(sm);
+		} else
+		if(0 == strcmp (child->Name(),"Profile")) {
+			parseXMLProfile(child,dev);
 		} else
 		if(0 == strcmp (child->Name(),"TxPdo")) {
 			parseXMLPdo(child,&(dev->txpdo));
@@ -681,7 +872,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 		printf("Could not open '%s'\n",file.c_str());
 		return -EINVAL;
 	}
-	printf("Encoding '%s' to '%s' EEPROM\n",file.c_str(),output.c_str());
 	const tinyxml2::XMLElement* root = doc.RootElement();
 	if(NULL != root) {
 		if(0 != strcmp(ESI_ROOTNODE_NAME,root->Name())) {
@@ -695,423 +885,452 @@ int encodeSII(const std::string& file, std::string output = "") {
 		// ...
 		Device* dev = devices.front();
 		if(!devices.empty()) {
-			sii_eeprom = new uint8_t[EC_SII_EEPROM_SIZE];
-			memset(sii_eeprom,0,EC_SII_EEPROM_SIZE);
-
-			std::ofstream out;
-			out.open(output.c_str(), std::ios::out | std::ios::binary | std::ios::trunc);
-			if(!out.fail()) {
-				// Pointer for writing
-				uint8_t* p = &sii_eeprom[0];
-
-				// Write configdata part
-				for(uint8_t i = 0; i < EC_SII_CONFIGDATA_SIZEB; ++i,++p)
-					*p = dev->configdata[i];
-
-				// Write Vendor ID (Word 0x0008)
-				*(p++) = (vendor_id & 0xFF);
-				*(p++) = (vendor_id >> 8) & 0xFF;
-				*(p++) = (vendor_id >> 16) & 0xFF;
-				*(p++) = (vendor_id >> 24) & 0xFF;
-
-				// Write Product Code (Word 0x000A)
-				*(p++) = (dev->product_code & 0xFF);
-				*(p++) = (dev->product_code >> 8) & 0xFF;
-				*(p++) = (dev->product_code >> 16) & 0xFF;
-				*(p++) = (dev->product_code >> 24) & 0xFF;
-
-				// Write Revision No (Word 0x000C)
-				*(p++) = (dev->revision_no & 0xFF);
-				*(p++) = (dev->revision_no >> 8) & 0xFF;
-				*(p++) = (dev->revision_no >> 16) & 0xFF;
-				*(p++) = (dev->revision_no >> 24) & 0xFF;
-
-				// Handle out/in mailbox offsets
-				for(SyncManager* sm : dev->syncmanagers) {
-					if(0 == strcmp(sm->type,"MBoxOut")) {
-						// Write Mailbox Out (Word 0x0018)
-						p = sii_eeprom + EC_SII_EEPROM_MAILBOX_OUT_OFFSET_BYTE;
-						*(p++) = sm->startaddress & 0xFF;
-						*(p++) = (sm->startaddress >> 8) & 0xFF;
-						*(p++) = sm->defaultsize & 0xFF;
-						*(p++) = (sm->defaultsize >> 8) & 0xFF;
-					} else
-					if(0 == strcmp(sm->type,"MBoxIn")) {
-						// Write Mailbox In (Word 0x001A)
-						p = sii_eeprom + EC_SII_EEPROM_MAILBOX_IN_OFFSET_BYTE;
-						*(p++) = sm->startaddress & 0xFF;
-						*(p++) = (sm->startaddress >> 8) & 0xFF;
-						*(p++) = sm->defaultsize & 0xFF;
-						*(p++) = (sm->defaultsize >> 8) & 0xFF;
-					}
+			printf("Profile: %s\n",dev->profile ? "yes" : "no");
+			if(NULL != dev->profile) {
+				printf("Dictionary: %s\n",dev->profile->dictionary ? "yes" : "no");
+				if(NULL != dev->profile->dictionary) {
+					printf("Objects: %lu\n",dev->profile->dictionary->objects.size());
 				}
-
-				// Write Mailbox Protocol (Word 0x001C)
-				p = sii_eeprom + EC_SII_EEPROM_MAILBOX_PROTO_OFFSET_BYTE;
-				uint16_t mailbox_proto = 0x0;
-				if(dev->mailbox) {
-					if(dev->mailbox->aoe) mailbox_proto |= 0x0001;
-					if(dev->mailbox->eoe) mailbox_proto |= 0x0002;
-					if(dev->mailbox->coe) mailbox_proto |= 0x0004;
-					if(dev->mailbox->foe) mailbox_proto |= 0x0008;
-					if(dev->mailbox->soe) mailbox_proto |= 0x0010;
-					if(dev->mailbox->voe) mailbox_proto |= 0x0020;
-				}
-				*(p++) = mailbox_proto & 0xFF;
-				*(p++) = (mailbox_proto >> 8) & 0xFF;
-
-				// EEPROM Size 0x003E TODO
-
-				// EEPROM Version 0x003E (currently 1)
-				p = sii_eeprom + EC_SII_EEPROM_VERSION_OFFSET_BYTE;
-				*(p++) = 0x1;
-				*(p++) = 0x0;
-
-				p = sii_eeprom + EC_SII_EEPROM_FIRST_CAT_HDR_OFFSET_BYTE;
-				// First category header (seems to be STRINGS usually) (Word 0x040)
-				*(p++) = EEPROMCategorySTRINGS & 0xFF;
-				*(p++) = (EEPROMCategorySTRINGS >> 8) & 0xFF;
-
- 				// Default: two strings, device group name first, then device name
-				std::list<const char*> strings;
-				strings.push_back(dev->group->type);
-				strings.push_back(dev->name);
-
-				// First category word size (Word 0x041)
-				// +1 for the number of strings and +1 for the
-				// string length of each string (of which there are two) so +3
-				uint16_t stringcatlen = 0x1; // For the number of strings byte
-				for(auto str : strings) {
-					stringcatlen += strlen(str);
-					++stringcatlen; // The stringlength byte
-				}
-
-				// Pad to complete word
-				uint16_t stringcatpad = (stringcatlen % 2);
-				stringcatlen += stringcatpad;
-				stringcatlen /= 2; // "Convert" to words
-				*(p++) = stringcatlen & 0xFF;
-				*(p++) = (stringcatlen >> 8) & 0xFF;
-
-				// Create STRINGS category (ETG2000 Table 6)
-				*(p++) = strings.size() & 0xFF;
-				for(auto str : strings) {
-					uint8_t len = strlen(str);
-					*(p++) = len;
-					for(uint8_t i = 0; i < len; ++i) {
-						*(p++) = str[i];
-					}
-				}
-				// Adjust write pointer for padding
-				p += stringcatpad;
-				//for(; stringcatpad > 0; --stringcatpad) ++p;
-
-				// Next category, seems to be GENERAL (ETG2000 Table 7)
-				*(p++) = EEPROMCategoryGeneral & 0xFF;
-				*(p++) = (EEPROMCategoryGeneral >> 8) & 0xFF;
-
-				*(p++) = 0x10; // General category is 16 words
-				*(p++) = 0x0;
-
-				*(p++) = 0x1; // Group name index to STRINGS (1 as per above)
-				*(p++) = 0x0; // Image name index to STRINGS (0, not supported yet TODO)
-				*(p++) = 0x0; // Device order number index to STRINGS (0, not supported yet TODO)
-				*(p++) = 0x2; // Device name index to STRINGS (2 as per above)
-
-				*(p++); // Reserved
-
-				uint8_t coedetails = 0x0;
-				if(dev->mailbox) {
-					coedetails |= dev->mailbox->coe ? 0x1 : 0x0;
-					coedetails |= dev->mailbox->coe_sdoinfo ? (0x1 << 1) : 0x0;
-					coedetails |= dev->mailbox->coe_pdoassign ? (0x1 << 2) : 0x0;
-					coedetails |= dev->mailbox->coe_pdoconfig ? (0x1 << 3) : 0x0;
-					coedetails |= dev->mailbox->coe_pdoupload ? (0x1 << 4) : 0x0;
-					coedetails |= dev->mailbox->coe_completeaccess ? (0x1 << 5) : 0x0;
-				}
-				*(p++) = coedetails;
-
-				uint8_t foedetails = 0x0;
-				if(dev->mailbox) {
-					foedetails |= dev->mailbox->foe ? 0x1 : 0x0;
-				}
-				*(p++) = foedetails;
-
-				uint8_t eoedetails = 0x0;
-				if(dev->mailbox) {
-					eoedetails |= dev->mailbox->eoe ? 0x1 : 0x0;
-				}
-				*(p++) = eoedetails;
-
-				*(p++); // SoEChannels, reserved
-				*(p++); // DS402Channels, reserved
-				*(p++); // SysmanClass, reserved
-
-				uint8_t flags = 0x0;
-				// flags |= StartToSafeopNoSync ? 0x1 : 0x0; // TODO Esi:Info:StateMachine:Behavior:StartToSafeopNoSync
-				// flags |= Enable notLRW ? (0x1 << 1) : 0x0; // TODO Esi:DeviceType:Type
-				if(dev->mailbox && dev->mailbox->datalinklayer)
-					flags |= (0x1 << 2);
-				// flags |= Identification ? (0x1 << 3) : 0x0; // TODO ETG2000 Table 8
-				// flags |= Identification ? (0x1 << 4) : 0x0; // TODO ETG2000 Table 8
-				*(p++) = flags;
-
-				uint16_t ebuscurrent = 0;
-				*(p++) = ebuscurrent & 0xFF;
-				*(p++) = (ebuscurrent >> 8) & 0xFF;
-
-				*(p++) = 0x0; // GroupIdx, index to STRINGS (compatibility duplicate)
-				*(p++); // Reserved1
-
-				uint16_t physicalport = 0x0;
-				for(uint8_t ppidx = 0; ppidx < strlen(dev->physics); ++ppidx) {
-					// 0x00: not use
-					// 0x01: MII
-					// 0x02: reserved
-					// 0x03: EBUS
-					// 0x04: Fast Hot Connect
-					switch (dev->physics[ppidx]){
-						case 'Y':
-							physicalport |= 0x1 << (ppidx*4);
-						break;
-						case 'K': // LVDS, EBUS? TODO
-							physicalport |= 0x3 << (ppidx*4);
-						break;
-						case 'H':
-							physicalport |= 0x4 << (ppidx*4);
-						break;
-						case ' ':
-							physicalport |= 0x0 << (ppidx*4);
-						break;
-					}
-				}
-				*(p++) = physicalport & 0xFF;
-				*(p++) = (physicalport >> 8) & 0xFF;
-
-				uint16_t physicalmemaddr = 0x0;
-				*(p++) = physicalmemaddr & 0xFF;
-				*(p++) = (physicalmemaddr >> 8) & 0xFF;
-
-				p += 12; // Reserved2
-
-				// FMMU category if needed
-				if(dev->fmmus.size() > 0) {
-					*(p++) = EEPROMCategoryFMMU & 0xFF;
-					*(p++) = (EEPROMCategoryFMMU >> 8) & 0xFF;
-
-					uint16_t fmmucatlen = dev->fmmus.size();
-					uint8_t fmmupadding = fmmucatlen % 2;
-					fmmucatlen += fmmupadding;
-					fmmucatlen /= 2;
-
-					*(p++) = fmmucatlen & 0xFF;
-					*(p++) = (fmmucatlen >> 8) & 0xFF;
-
-					for(auto fmmu : dev->fmmus) {
-						if(0 == strcmp(fmmu->type,"Outputs")) {
-							*(p++) = 0x1;
-						} else if(0 == strcmp(fmmu->type,"Inputs")) {
-							*(p++) = 0x2;
-						} else if(0 == strcmp(fmmu->type,"MBoxState")) {
-							*(p++) = 0x3;
-						} else{
-							*(p++) = 0x0;
-						}
-						// TODO future dynamic thingies
-					}
-					p += fmmupadding;
-				}
-
-				// SyncManager category if needed
-				if(dev->syncmanagers.size() > 0) {
-					*(p++) = EEPROMCategorySyncM & 0xFF;
-					*(p++) = (EEPROMCategorySyncM >> 8) & 0xFF;
-
-					uint16_t smcatlen = dev->syncmanagers.size() * 8;
-					uint8_t smpadding = (smcatlen % 2) * 8;
-					smcatlen += smpadding;
-					smcatlen /= 2;
-
-					*(p++) = smcatlen & 0xFF;
-					*(p++) = (smcatlen >> 8) & 0xFF;
-
-					for(auto sm : dev->syncmanagers) {
-						*(p++) = sm->startaddress & 0xFF;
-						*(p++) = (sm->startaddress >> 8) & 0xFF;
-
-						*(p++) = sm->defaultsize & 0xFF;
-						*(p++) = (sm->defaultsize >> 8) & 0xFF;
-
-						*(p++) = sm->controlbyte;
-						*(p++) = 0x0; // Status, dont care
-
-						uint8_t enableSM = sm->enable ? 0x1 : 0x0;
-						// TODO additional bits
-						*(p++) = enableSM;
-
-						if(0 == strcmp(sm->type,"MBoxOut")) {
-							*(p++) = 0x1;
-						} else if(0 == strcmp(sm->type,"MBoxIn")) {
-							*(p++) = 0x2;
-						} else if(0 == strcmp(sm->type,"Outputs")) {
-							*(p++) = 0x3;
-						} else if(0 == strcmp(sm->type,"Inputs")) {
-							*(p++) = 0x4;
-						} else{
-							*(p++) = 0x0;
-						}
-						// TODO future dynamic thingies
-					}
-					p += smpadding;
-				}
-
-				// DC category if needed
-				if(dev->dc) {
-					*(p++) = EEPROMCategoryDC & 0xFF;
-					*(p++) = (EEPROMCategoryDC >> 8) & 0xFF;
-					// Each DC Opmode is 0xC words
-					uint16_t dccatlen = dev->dc->opmodes.size() * 0xC;
-					*(p++) = dccatlen & 0xFF;
-					*(p++) = (dccatlen >> 8) & 0xFF;
-
-					for(auto dc : dev->dc->opmodes) {
-						uint32_t cts0 = dc->cycletimesync0;
-						*(p++) = cts0 & 0xFF;
-						*(p++) = (cts0 >> 8) & 0xFF;
-						*(p++) = (cts0 >> 16) & 0xFF;
-						*(p++) = (cts0 >> 24) & 0xFF;
-
-						uint32_t sts0 = dc->shifttimesync0;
-						*(p++) = sts0 & 0xFF;
-						*(p++) = (sts0 >> 8) & 0xFF;
-						*(p++) = (sts0 >> 16) & 0xFF;
-						*(p++) = (sts0 >> 24) & 0xFF;
-
-						uint32_t sts1 = dc->shifttimesync1;
-						*(p++) = sts1 & 0xFF;
-						*(p++) = (sts1 >> 8) & 0xFF;
-						*(p++) = (sts1 >> 16) & 0xFF;
-						*(p++) = (sts1 >> 24) & 0xFF;
-
-						int16_t cts1f = dc->cycletimesync1factor;
-						*(p++) = cts1f & 0xFF;
-						*(p++) = (cts1f >> 8) & 0xFF;
-
-						uint16_t aa = dc->assignactivate;
-						*(p++) = aa & 0xFF;
-						*(p++) = (aa >> 8) & 0xFF;
-
-						int16_t cts0f = dc->cycletimesync0factor;
-						*(p++) = cts0f & 0xFF;
-						*(p++) = (cts0f >> 8) & 0xFF;
-
-						*(p++) = 0x0; // Name index into STRINGS, unsupported TODO
-						*(p++) = 0x0; // Description index into STRINGS, unsupported TODO
-						p += 4; // Reserved
-					}
-				}
-
-				// TXPDO category if needed
-				if(!dev->txpdo.empty())
-				{
-					for(Pdo* pdo : dev->txpdo) {
-						*(p++) = EEPROMCategoryTXPDO & 0xFF;
-						*(p++) = (EEPROMCategoryTXPDO >> 8) & 0xFF;
-						// Each PDO entry takes 8 bytes, and a "header" of 8 bytes
-						uint16_t txpdocatlen = ((pdo->entries.size() * 0x8) + 8) >> 1;
-						*(p++) = txpdocatlen & 0xFF;
-						*(p++) = (txpdocatlen >> 8) & 0xFF;
-
-						uint16_t index = EC_SII_HexToUint32(pdo->index) & 0xFFFF; // HexDec
-						*(p++) = index & 0xFF;
-						*(p++) = (index >> 8) & 0xFF;
-			
-						*(p++) = pdo->entries.size() & 0xFF;
-						*(p++) = pdo->syncmanager;
-						*(p++) = 0x0; // TODO Fixme, DC
-						*(p++) = 0x0; // TODO Name index to STRINGS
-
-						uint16_t flags = 0x0;
-						if(pdo->mandatory) flags |= 0x0001;
-						if(pdo->fixed) flags |= 0x0010;
-						// TODO more flags...
-						*(p++) = flags & 0xFF;
-						*(p++) = (flags >> 8) & 0xFF;
-
-						for(PdoEntry* entry : pdo->entries) {
-							index = EC_SII_HexToUint32(entry->index) & 0xFFFF;
-							*(p++) = index & 0xFF;
-							*(p++) = (index >> 8) & 0xFF;
-							*(p++) = entry->subindex & 0xFF;
-							*(p++) = 0x0; // TODO Name entry into STRINGS
-							*(p++) = getCoEDataType(entry->datatype);
-							*(p++) = entry->bitlen & 0xFF;
-							*(p++) = 0x0; // Reserved, flags
-							*(p++) = 0x0; // Reserved, flags
-						}
-					}
-				}
-
-				// RXPDO category if needed
-				if(!dev->rxpdo.empty())
-				{
-					for(Pdo* pdo : dev->rxpdo) {
-						*(p++) = EEPROMCategoryRXPDO & 0xFF;
-						*(p++) = (EEPROMCategoryRXPDO >> 8) & 0xFF;
-						// Each PDO entry takes 8 bytes, and a "header" of 8 bytes
-						uint16_t rxpdocatlen = ((pdo->entries.size() * 0x8) + 8) >> 1;
-						*(p++) = rxpdocatlen & 0xFF;
-						*(p++) = (rxpdocatlen >> 8) & 0xFF;
-
-						uint16_t index = EC_SII_HexToUint32(pdo->index) & 0xFFFF; // HexDec
-						*(p++) = index & 0xFF;
-						*(p++) = (index >> 8) & 0xFF;
-						*(p++) = pdo->entries.size() & 0xFF;
-						*(p++) = pdo->syncmanager;
-						*(p++) = 0x0; // TODO Fixme, DC
-						*(p++) = 0x0; // TODO Name index to STRINGS
-
-						uint16_t flags = 0x0;
-						if(pdo->mandatory) flags |= 0x0001;
-						if(pdo->fixed) flags |= 0x0010;
-						// TODO more flags...
-						*(p++) = flags & 0xFF;
-						*(p++) = (flags >> 8) & 0xFF;
-
-						for(PdoEntry* entry : pdo->entries) {
-							index = EC_SII_HexToUint32(entry->index) & 0xFFFF;
-							*(p++) = index & 0xFF;
-							*(p++) = (index >> 8) & 0xFF;
-							*(p++) = entry->subindex & 0xFF;
-							*(p++) = 0x0; // TODO Name entry into STRINGS
-							*(p++) = getCoEDataType(entry->datatype);
-							*(p++) = entry->bitlen & 0xFF;
-							*(p++) = 0x0; // Reserved, flags
-							*(p++) = 0x0; // Reserved, flags
-						}
-					}
-				}
-
-				*(p++) = 0xFF; // End
-				*(p++) = 0xFF;
-
-				if(verbose) {
-					printf("EEPROM contents:\n");
-					// Print EEPROM data
-					for(uint16_t i = 0; i < EC_SII_EEPROM_SIZE; i=i+2)
-						printf("%04X / %04X: %.02X %.02X\n",i/2,i,sii_eeprom[i],sii_eeprom[i+1]);
-				}
-
-				printf("Writing EEPROM...");
-				for(uint32_t i = 0; i < EC_SII_EEPROM_SIZE; ++i) out << sii_eeprom[i];
-				printf("Done\n");
-				out.sync_with_stdio();
-				out.close();
-
-				delete sii_eeprom;
-			} else {
-				printf("Failed writing eepro data to '%s'\n",output.c_str());
 			}
+			if(!nosii) {
+				printf("Encoding '%s' to '%s' EEPROM\n",file.c_str(),output.c_str());
+				sii_eeprom = new uint8_t[EC_SII_EEPROM_SIZE];
+				memset(sii_eeprom,0,EC_SII_EEPROM_SIZE);
+
+				std::ofstream out;
+				out.open(output.c_str(), std::ios::out | std::ios::binary | std::ios::trunc);
+				if(!out.fail()) {
+					// Pointer for writing
+					uint8_t* p = &sii_eeprom[0];
+
+					// Write configdata part
+					for(uint8_t i = 0; i < EC_SII_CONFIGDATA_SIZEB; ++i,++p)
+						*p = dev->configdata[i];
+
+					// Write Vendor ID (Word 0x0008)
+					*(p++) = (vendor_id & 0xFF);
+					*(p++) = (vendor_id >> 8) & 0xFF;
+					*(p++) = (vendor_id >> 16) & 0xFF;
+					*(p++) = (vendor_id >> 24) & 0xFF;
+
+					// Write Product Code (Word 0x000A)
+					*(p++) = (dev->product_code & 0xFF);
+					*(p++) = (dev->product_code >> 8) & 0xFF;
+					*(p++) = (dev->product_code >> 16) & 0xFF;
+					*(p++) = (dev->product_code >> 24) & 0xFF;
+
+					// Write Revision No (Word 0x000C)
+					*(p++) = (dev->revision_no & 0xFF);
+					*(p++) = (dev->revision_no >> 8) & 0xFF;
+					*(p++) = (dev->revision_no >> 16) & 0xFF;
+					*(p++) = (dev->revision_no >> 24) & 0xFF;
+
+					// Handle out/in mailbox offsets
+					for(SyncManager* sm : dev->syncmanagers) {
+						if(0 == strcmp(sm->type,"MBoxOut")) {
+							// Write Mailbox Out (Word 0x0018)
+							p = sii_eeprom + EC_SII_EEPROM_MAILBOX_OUT_OFFSET_BYTE;
+							*(p++) = sm->startaddress & 0xFF;
+							*(p++) = (sm->startaddress >> 8) & 0xFF;
+							*(p++) = sm->defaultsize & 0xFF;
+							*(p++) = (sm->defaultsize >> 8) & 0xFF;
+						} else
+						if(0 == strcmp(sm->type,"MBoxIn")) {
+							// Write Mailbox In (Word 0x001A)
+							p = sii_eeprom + EC_SII_EEPROM_MAILBOX_IN_OFFSET_BYTE;
+							*(p++) = sm->startaddress & 0xFF;
+							*(p++) = (sm->startaddress >> 8) & 0xFF;
+							*(p++) = sm->defaultsize & 0xFF;
+							*(p++) = (sm->defaultsize >> 8) & 0xFF;
+						}
+					}
+
+					// Write Mailbox Protocol (Word 0x001C)
+					p = sii_eeprom + EC_SII_EEPROM_MAILBOX_PROTO_OFFSET_BYTE;
+					uint16_t mailbox_proto = 0x0;
+					if(dev->mailbox) {
+						if(dev->mailbox->aoe) mailbox_proto |= 0x0001;
+						if(dev->mailbox->eoe) mailbox_proto |= 0x0002;
+						if(dev->mailbox->coe) mailbox_proto |= 0x0004;
+						if(dev->mailbox->foe) mailbox_proto |= 0x0008;
+						if(dev->mailbox->soe) mailbox_proto |= 0x0010;
+						if(dev->mailbox->voe) mailbox_proto |= 0x0020;
+					}
+					*(p++) = mailbox_proto & 0xFF;
+					*(p++) = (mailbox_proto >> 8) & 0xFF;
+
+					// EEPROM Size 0x003E TODO
+
+					// EEPROM Version 0x003E (currently 1)
+					p = sii_eeprom + EC_SII_EEPROM_VERSION_OFFSET_BYTE;
+					*(p++) = 0x1;
+					*(p++) = 0x0;
+
+					p = sii_eeprom + EC_SII_EEPROM_FIRST_CAT_HDR_OFFSET_BYTE;
+					// First category header (seems to be STRINGS usually) (Word 0x040)
+					*(p++) = EEPROMCategorySTRINGS & 0xFF;
+					*(p++) = (EEPROMCategorySTRINGS >> 8) & 0xFF;
+
+					// Default: two strings, device group name first, then device name
+					std::list<const char*> strings;
+					strings.push_back(dev->group->type);
+					strings.push_back(dev->name);
+
+					// First category word size (Word 0x041)
+					// +1 for the number of strings and +1 for the
+					// string length of each string (of which there are two) so +3
+					uint16_t stringcatlen = 0x1; // For the number of strings byte
+					for(auto str : strings) {
+						stringcatlen += strlen(str);
+						++stringcatlen; // The stringlength byte
+					}
+
+					// Pad to complete word
+					uint16_t stringcatpad = (stringcatlen % 2);
+					stringcatlen += stringcatpad;
+					stringcatlen /= 2; // "Convert" to words
+					*(p++) = stringcatlen & 0xFF;
+					*(p++) = (stringcatlen >> 8) & 0xFF;
+
+					// Create STRINGS category (ETG2000 Table 6)
+					*(p++) = strings.size() & 0xFF;
+					for(auto str : strings) {
+						uint8_t len = strlen(str);
+						*(p++) = len;
+						for(uint8_t i = 0; i < len; ++i) {
+							*(p++) = str[i];
+						}
+					}
+					// Adjust write pointer for padding
+					p += stringcatpad;
+					//for(; stringcatpad > 0; --stringcatpad) ++p;
+
+					// Next category, seems to be GENERAL (ETG2000 Table 7)
+					*(p++) = EEPROMCategoryGeneral & 0xFF;
+					*(p++) = (EEPROMCategoryGeneral >> 8) & 0xFF;
+
+					*(p++) = 0x10; // General category is 16 words
+					*(p++) = 0x0;
+
+					*(p++) = 0x1; // Group name index to STRINGS (1 as per above)
+					*(p++) = 0x0; // Image name index to STRINGS (0, not supported yet TODO)
+					*(p++) = 0x0; // Device order number index to STRINGS (0, not supported yet TODO)
+					*(p++) = 0x2; // Device name index to STRINGS (2 as per above)
+
+					*(p++); // Reserved
+
+					uint8_t coedetails = 0x0;
+					if(dev->mailbox) {
+						coedetails |= dev->mailbox->coe ? 0x1 : 0x0;
+						coedetails |= dev->mailbox->coe_sdoinfo ? (0x1 << 1) : 0x0;
+						coedetails |= dev->mailbox->coe_pdoassign ? (0x1 << 2) : 0x0;
+						coedetails |= dev->mailbox->coe_pdoconfig ? (0x1 << 3) : 0x0;
+						coedetails |= dev->mailbox->coe_pdoupload ? (0x1 << 4) : 0x0;
+						coedetails |= dev->mailbox->coe_completeaccess ? (0x1 << 5) : 0x0;
+					}
+					*(p++) = coedetails;
+
+					uint8_t foedetails = 0x0;
+					if(dev->mailbox) {
+						foedetails |= dev->mailbox->foe ? 0x1 : 0x0;
+					}
+					*(p++) = foedetails;
+
+					uint8_t eoedetails = 0x0;
+					if(dev->mailbox) {
+						eoedetails |= dev->mailbox->eoe ? 0x1 : 0x0;
+					}
+					*(p++) = eoedetails;
+
+					*(p++); // SoEChannels, reserved
+					*(p++); // DS402Channels, reserved
+					*(p++); // SysmanClass, reserved
+
+					uint8_t flags = 0x0;
+					// flags |= StartToSafeopNoSync ? 0x1 : 0x0; // TODO Esi:Info:StateMachine:Behavior:StartToSafeopNoSync
+					// flags |= Enable notLRW ? (0x1 << 1) : 0x0; // TODO Esi:DeviceType:Type
+					if(dev->mailbox && dev->mailbox->datalinklayer)
+						flags |= (0x1 << 2);
+					// flags |= Identification ? (0x1 << 3) : 0x0; // TODO ETG2000 Table 8
+					// flags |= Identification ? (0x1 << 4) : 0x0; // TODO ETG2000 Table 8
+					*(p++) = flags;
+
+					uint16_t ebuscurrent = 0;
+					*(p++) = ebuscurrent & 0xFF;
+					*(p++) = (ebuscurrent >> 8) & 0xFF;
+
+					*(p++) = 0x0; // GroupIdx, index to STRINGS (compatibility duplicate)
+					*(p++); // Reserved1
+
+					uint16_t physicalport = 0x0;
+					for(uint8_t ppidx = 0; ppidx < strlen(dev->physics); ++ppidx) {
+						// 0x00: not use
+						// 0x01: MII
+						// 0x02: reserved
+						// 0x03: EBUS
+						// 0x04: Fast Hot Connect
+						switch (dev->physics[ppidx]){
+							case 'Y':
+								physicalport |= 0x1 << (ppidx*4);
+							break;
+							case 'K': // LVDS, EBUS? TODO
+								physicalport |= 0x3 << (ppidx*4);
+							break;
+							case 'H':
+								physicalport |= 0x4 << (ppidx*4);
+							break;
+							case ' ':
+								physicalport |= 0x0 << (ppidx*4);
+							break;
+						}
+					}
+					*(p++) = physicalport & 0xFF;
+					*(p++) = (physicalport >> 8) & 0xFF;
+
+					uint16_t physicalmemaddr = 0x0;
+					*(p++) = physicalmemaddr & 0xFF;
+					*(p++) = (physicalmemaddr >> 8) & 0xFF;
+
+					p += 12; // Reserved2
+
+					// FMMU category if needed
+					if(dev->fmmus.size() > 0) {
+						*(p++) = EEPROMCategoryFMMU & 0xFF;
+						*(p++) = (EEPROMCategoryFMMU >> 8) & 0xFF;
+
+						uint16_t fmmucatlen = dev->fmmus.size();
+						uint8_t fmmupadding = fmmucatlen % 2;
+						fmmucatlen += fmmupadding;
+						fmmucatlen /= 2;
+
+						*(p++) = fmmucatlen & 0xFF;
+						*(p++) = (fmmucatlen >> 8) & 0xFF;
+
+						for(auto fmmu : dev->fmmus) {
+							if(0 == strcmp(fmmu->type,"Outputs")) {
+								*(p++) = 0x1;
+							} else if(0 == strcmp(fmmu->type,"Inputs")) {
+								*(p++) = 0x2;
+							} else if(0 == strcmp(fmmu->type,"MBoxState")) {
+								*(p++) = 0x3;
+							} else{
+								*(p++) = 0x0;
+							}
+							// TODO future dynamic thingies
+						}
+						p += fmmupadding;
+					}
+
+					// SyncManager category if needed
+					if(dev->syncmanagers.size() > 0) {
+						*(p++) = EEPROMCategorySyncM & 0xFF;
+						*(p++) = (EEPROMCategorySyncM >> 8) & 0xFF;
+
+						uint16_t smcatlen = dev->syncmanagers.size() * 8;
+						uint8_t smpadding = (smcatlen % 2) * 8;
+						smcatlen += smpadding;
+						smcatlen /= 2;
+
+						*(p++) = smcatlen & 0xFF;
+						*(p++) = (smcatlen >> 8) & 0xFF;
+
+						for(auto sm : dev->syncmanagers) {
+							*(p++) = sm->startaddress & 0xFF;
+							*(p++) = (sm->startaddress >> 8) & 0xFF;
+
+							*(p++) = sm->defaultsize & 0xFF;
+							*(p++) = (sm->defaultsize >> 8) & 0xFF;
+
+							*(p++) = sm->controlbyte;
+							*(p++) = 0x0; // Status, dont care
+
+							uint8_t enableSM = sm->enable ? 0x1 : 0x0;
+							// TODO additional bits
+							*(p++) = enableSM;
+
+							if(0 == strcmp(sm->type,"MBoxOut")) {
+								*(p++) = 0x1;
+							} else if(0 == strcmp(sm->type,"MBoxIn")) {
+								*(p++) = 0x2;
+							} else if(0 == strcmp(sm->type,"Outputs")) {
+								*(p++) = 0x3;
+							} else if(0 == strcmp(sm->type,"Inputs")) {
+								*(p++) = 0x4;
+							} else{
+								*(p++) = 0x0;
+							}
+							// TODO future dynamic thingies
+						}
+						p += smpadding;
+					}
+
+					// DC category if needed
+					if(dev->dc) {
+						*(p++) = EEPROMCategoryDC & 0xFF;
+						*(p++) = (EEPROMCategoryDC >> 8) & 0xFF;
+						// Each DC Opmode is 0xC words
+						uint16_t dccatlen = dev->dc->opmodes.size() * 0xC;
+						*(p++) = dccatlen & 0xFF;
+						*(p++) = (dccatlen >> 8) & 0xFF;
+
+						for(auto dc : dev->dc->opmodes) {
+							uint32_t cts0 = dc->cycletimesync0;
+							*(p++) = cts0 & 0xFF;
+							*(p++) = (cts0 >> 8) & 0xFF;
+							*(p++) = (cts0 >> 16) & 0xFF;
+							*(p++) = (cts0 >> 24) & 0xFF;
+
+							uint32_t sts0 = dc->shifttimesync0;
+							*(p++) = sts0 & 0xFF;
+							*(p++) = (sts0 >> 8) & 0xFF;
+							*(p++) = (sts0 >> 16) & 0xFF;
+							*(p++) = (sts0 >> 24) & 0xFF;
+
+							uint32_t sts1 = dc->shifttimesync1;
+							*(p++) = sts1 & 0xFF;
+							*(p++) = (sts1 >> 8) & 0xFF;
+							*(p++) = (sts1 >> 16) & 0xFF;
+							*(p++) = (sts1 >> 24) & 0xFF;
+
+							int16_t cts1f = dc->cycletimesync1factor;
+							*(p++) = cts1f & 0xFF;
+							*(p++) = (cts1f >> 8) & 0xFF;
+
+							uint16_t aa = dc->assignactivate;
+							*(p++) = aa & 0xFF;
+							*(p++) = (aa >> 8) & 0xFF;
+
+							int16_t cts0f = dc->cycletimesync0factor;
+							*(p++) = cts0f & 0xFF;
+							*(p++) = (cts0f >> 8) & 0xFF;
+
+							*(p++) = 0x0; // Name index into STRINGS, unsupported TODO
+							*(p++) = 0x0; // Description index into STRINGS, unsupported TODO
+							p += 4; // Reserved
+						}
+					}
+
+					// TXPDO category if needed
+					if(!dev->txpdo.empty())
+					{
+						for(Pdo* pdo : dev->txpdo) {
+							*(p++) = EEPROMCategoryTXPDO & 0xFF;
+							*(p++) = (EEPROMCategoryTXPDO >> 8) & 0xFF;
+							// Each PDO entry takes 8 bytes, and a "header" of 8 bytes
+							uint16_t txpdocatlen = ((pdo->entries.size() * 0x8) + 8) >> 1;
+							*(p++) = txpdocatlen & 0xFF;
+							*(p++) = (txpdocatlen >> 8) & 0xFF;
+
+							uint16_t index = EC_SII_HexToUint32(pdo->index) & 0xFFFF; // HexDec
+							*(p++) = index & 0xFF;
+							*(p++) = (index >> 8) & 0xFF;
+				
+							*(p++) = pdo->entries.size() & 0xFF;
+							*(p++) = pdo->syncmanager;
+							*(p++) = 0x0; // TODO Fixme, DC
+							*(p++) = 0x0; // TODO Name index to STRINGS
+
+							uint16_t flags = 0x0;
+							if(pdo->mandatory) flags |= 0x0001;
+							if(pdo->fixed) flags |= 0x0010;
+							// TODO more flags...
+							*(p++) = flags & 0xFF;
+							*(p++) = (flags >> 8) & 0xFF;
+
+							for(PdoEntry* entry : pdo->entries) {
+								index = EC_SII_HexToUint32(entry->index) & 0xFFFF;
+								*(p++) = index & 0xFF;
+								*(p++) = (index >> 8) & 0xFF;
+								*(p++) = entry->subindex & 0xFF;
+								*(p++) = 0x0; // TODO Name entry into STRINGS
+								*(p++) = getCoEDataType(entry->datatype);
+								*(p++) = entry->bitlen & 0xFF;
+								*(p++) = 0x0; // Reserved, flags
+								*(p++) = 0x0; // Reserved, flags
+							}
+						}
+					}
+
+					// RXPDO category if needed
+					if(!dev->rxpdo.empty())
+					{
+						for(Pdo* pdo : dev->rxpdo) {
+							*(p++) = EEPROMCategoryRXPDO & 0xFF;
+							*(p++) = (EEPROMCategoryRXPDO >> 8) & 0xFF;
+							// Each PDO entry takes 8 bytes, and a "header" of 8 bytes
+							uint16_t rxpdocatlen = ((pdo->entries.size() * 0x8) + 8) >> 1;
+							*(p++) = rxpdocatlen & 0xFF;
+							*(p++) = (rxpdocatlen >> 8) & 0xFF;
+
+							uint16_t index = EC_SII_HexToUint32(pdo->index) & 0xFFFF; // HexDec
+							*(p++) = index & 0xFF;
+							*(p++) = (index >> 8) & 0xFF;
+							*(p++) = pdo->entries.size() & 0xFF;
+							*(p++) = pdo->syncmanager;
+							*(p++) = 0x0; // TODO Fixme, DC
+							*(p++) = 0x0; // TODO Name index to STRINGS
+
+							uint16_t flags = 0x0;
+							if(pdo->mandatory) flags |= 0x0001;
+							if(pdo->fixed) flags |= 0x0010;
+							// TODO more flags...
+							*(p++) = flags & 0xFF;
+							*(p++) = (flags >> 8) & 0xFF;
+
+							for(PdoEntry* entry : pdo->entries) {
+								index = EC_SII_HexToUint32(entry->index) & 0xFFFF;
+								*(p++) = index & 0xFF;
+								*(p++) = (index >> 8) & 0xFF;
+								*(p++) = entry->subindex & 0xFF;
+								*(p++) = 0x0; // TODO Name entry into STRINGS
+								*(p++) = getCoEDataType(entry->datatype);
+								*(p++) = entry->bitlen & 0xFF;
+								*(p++) = 0x0; // Reserved, flags
+								*(p++) = 0x0; // Reserved, flags
+							}
+						}
+					}
+
+					*(p++) = 0xFF; // End
+					*(p++) = 0xFF;
+
+					if(verbose) {
+						printf("EEPROM contents:\n");
+						// Print EEPROM data
+						for(uint16_t i = 0; i < EC_SII_EEPROM_SIZE; i=i+2)
+							printf("%04X / %04X: %.02X %.02X\n",i/2,i,sii_eeprom[i],sii_eeprom[i+1]);
+					}
+
+					printf("Writing EEPROM...");
+					for(uint32_t i = 0; i < EC_SII_EEPROM_SIZE; ++i) out << sii_eeprom[i];
+					printf("Done\n");
+					out.sync_with_stdio();
+					out.close();
+
+					delete sii_eeprom;
+				} else {
+					printf("Failed writing EEPROM data to '%s'\n",output.c_str());
+				}
+			}
+			
+			if(writeobjectdict) {
+				std::ofstream out;
+				out.open(objectdictfile.c_str(), std::ios::out | std::ios::trunc);
+				if(!out.fail()) {
+					printf("Writing SOES compatible object dictionary to '%s'\n",objectdictfile.c_str());
+					out << "/** Autogenerated by " << APP_NAME << " v" << APP_VERSION << " */\n"
+					<< "#include \"esc_coe.h\"\n"
+					<< "#include \"utypes.h\"\n"
+					<< "#include <stddef.h>\n"
+					<< "\n";
+
+					out.sync_with_stdio();
+					out.close();
+				} else {
+					printf("Could not open '%s' for writing object dictionary\n",objectdictfile.c_str());
+				}
+			}
+
 			printf("Finished\n");
 		} else {
 			printf("No 'Devices' nodes could be parsed\n");
@@ -1122,28 +1341,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 
 	return 0;
 }
-
-const char* getCategoryString(const uint16_t category) {
-	switch(category) {
-		case 10: return "STRINGS";
-		case 20: return "DataTypes";
-		case 30: return "General";
-		case 40: return "FMMU";
-		case 41: return "SyncM";
-		case 42: return "FMMUX";
-		case 43: return "SyncUnit";
-		case 50: return "TXPDO";
-		case 51: return "RXPDO";
-		case 60: return "Distributed Clock/DC";
-		case 70: return "Timeouts";
-		case 80: return "Dictionary";
-		case 90: return "Hardware";
-		case 100: return "Vendor Information";
-		case 110: return "Images";
-		default: return "UNKNOWN";
-	}
-	return "NULL";
-};
 
 int decodeSII(const std::string& file) {
 	int fd = open(file.c_str(), O_RDONLY);
@@ -1180,6 +1377,8 @@ int decodeSII(const std::string& file) {
 	ptr += 4;
 	printf("Revision: \033[0;32m0x%.08X \033[0;36m[Esi:DeviceType:Type:RevisionNo]\033[0m\n",*(uint32_t*)ptr);
 	ptr += 4;
+
+	// TODO eepromsize and version
 
 	ptr = p + EC_SII_EEPROM_FIRST_CAT_HDR_OFFSET_BYTE; // Categories
 
@@ -1427,6 +1626,7 @@ int decodeSII(const std::string& file) {
 
 int main(int argc, char* argv[])
 {
+	printf("%s v%s\n",APP_NAME,APP_VERSION);
 	// We by default assume we're encoding a XML slave specification
 	bool encode = true;
 	bool decode = false;
@@ -1443,6 +1643,16 @@ int main(int argc, char* argv[])
 		{
 			verbose = true;
 		} else
+		if(0 == strcmp(argv[i],"--nosii") ||
+		   0 == strcmp(argv[i],"-n"))
+		{
+			nosii = true;
+		} else
+		if(0 == strcmp(argv[i],"--dictionary") ||
+		   0 == strcmp(argv[i],"-d"))
+		{
+			writeobjectdict = true;
+		} else
 		if(0 == strcmp(argv[i],"--output") ||
 		   0 == strcmp(argv[i],"-o"))
 		{
@@ -1453,6 +1663,12 @@ int main(int argc, char* argv[])
 			encode = false;
 		}
 	}
+
+	if(encode && nosii && !writeobjectdict) {
+		printf("Assuming Object Dictionary should be generated...\n");
+		writeobjectdict = true;
+	}
+
 	if("" == inputfile) {
 		printUsage(argv[0]);
 		return -EINVAL;

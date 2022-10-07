@@ -17,7 +17,7 @@ include(${CMAKE_SYSTEM_NAME} OPTIONAL)
 
 message (STATUS "Building for ${CMAKE_SYSTEM_NAME}")
 
-add_executable(slaveconfigtool
+add_executable(esctool
   tinyxml2/tinyxml2.cpp
   tinyxml2/tinyxml2.h
   main.cpp
