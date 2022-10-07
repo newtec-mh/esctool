@@ -890,6 +890,9 @@ int encodeSII(const std::string& file, std::string output = "") {
 				printf("Dictionary: %s\n",dev->profile->dictionary ? "yes" : "no");
 				if(NULL != dev->profile->dictionary) {
 					printf("Objects: %lu\n",dev->profile->dictionary->objects.size());
+					for(Object* o : dev->profile->dictionary->objects) {
+						printf("Obj: Index: %.04X, Name: '%s'\n",EC_SII_HexToUint32(o->index),o->name);
+					}
 				}
 			}
 			if(!nosii) {
