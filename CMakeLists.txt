@@ -12,6 +12,8 @@ include_directories(
   ${SLAVECONFIGTOOL_SOURCE_DIR}/tinyxml2
   )
 
+set(CMAKE_CXX_FLAGS "-O0 -ggdb")
+
 # Platform flags and sources
 include(${CMAKE_SYSTEM_NAME} OPTIONAL)
 
