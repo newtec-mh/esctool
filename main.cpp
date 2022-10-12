@@ -1665,6 +1665,8 @@ int encodeSII(const std::string& file, std::string output = "") {
 						    << subitem
 						    << ", ";
 
+						uint16_t index = EC_SII_HexToUint32(obj->index);
+
 						DataType* datatype = obj->datatype;
 						const char* type = datatype ? (datatype->type ? datatype->type : datatype->name) : obj->type;
 						const ObjectFlags* flags = obj->flags ? obj->flags : (datatype ? datatype->flags : NULL);
@@ -1680,7 +1682,7 @@ int encodeSII(const std::string& file, std::string output = "") {
 							    << std::setfill('0')
 							    << std::setw(4)
 							    << std::uppercase
-							    << EC_SII_HexToUint32(obj->index);
+							    << index;
 							out << "_00) << 3";
 							objref = true;
 						} else  // capitalization of all these strings?
@@ -1730,7 +1732,7 @@ int encodeSII(const std::string& file, std::string output = "") {
 						    << std::setfill('0')
 						    << std::setw(4)
 						    << std::uppercase
-						    << EC_SII_HexToUint32(obj->index);
+						    << index;
 						if(nitems == 0) {
 							out << "[0]";
 						} else {
@@ -1746,7 +1748,8 @@ int encodeSII(const std::string& file, std::string output = "") {
 								out << "0x"
 								    << obj->defaultdata
 								    << ", NULL }";
-							} else { 
+							} else {
+
 								out << 0
 								    << ", NULL }";
 							}
@@ -1757,7 +1760,7 @@ int encodeSII(const std::string& file, std::string output = "") {
 							    << std::setfill('0')
 							    << std::setw(4)
 							    << std::uppercase
-							    << EC_SII_HexToUint32(obj->index);
+							    << index;
 							out << "_00[0] }";
 						}
 						++subitem;
