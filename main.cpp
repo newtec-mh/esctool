@@ -233,6 +233,11 @@ struct ObjectFlags {
 	const char* sdoaccess = NULL;
 };
 
+struct ArrayInfo {
+	uint8_t lowerbound = 0;
+	uint8_t elements = 0;
+};
+
 struct DataType {
 	const char* name = NULL;
 	const char* type = NULL;
@@ -240,6 +245,7 @@ struct DataType {
 	uint32_t bitoffset = 0;
 	const char* basetype = NULL;
 	uint8_t subindex = 0;
+	ArrayInfo* arrayinfo = NULL;
 	std::list<DataType*> subitems;
 	ObjectFlags* flags = NULL;
 };
@@ -248,6 +254,7 @@ struct Object {
 	const char* index = NULL;
 	const char* name = NULL;
 	const char* type = NULL;
+	DataType* datatype = NULL;
 	uint32_t bitsize = 0;
 	uint32_t bitoffset = 0;
 	const char* defaultdata = NULL;
@@ -306,6 +313,44 @@ uint32_t EC_SII_HexToUint32(const char* s) {
 	}
 	return r;
 }
+
+void printObject (Object* o) {
+	printf("Obj: Index: 0x%.04X, Name: '%s'\n",(NULL != o->index ? EC_SII_HexToUint32(o->index) : 0),o->name);
+	for(Object* si : o->subitems) printObject(si);
+};
+
+void printDataType (DataType* dt) {
+	printf("DataType: Name: '%s', Type: '%s'\n",dt->name,dt->type);
+	for(DataType* dsi : dt->subitems) printDataType(dsi);
+};
+
+void printDataTypeVerbose (DataType* dt) {
+	printf("DataType:\n");
+	printf("Name: '%s'\n",dt->name);
+	printf("Type: '%s'\n",dt->type);
+	printf("BaseType: '%s'\n",dt->basetype);
+	printf("BitSize: '%d'\n",dt->bitsize);
+	printf("BitOffset: '%d'\n",dt->bitoffset);
+	printf("SubIndex: '%d'\n",dt->subindex);
+	printf("SubItems: '%lu'\n",dt->subitems.size());
+	printf("ArrayInfo: '%s'\n",dt->arrayinfo ? "yes" : "no");
+	if(dt->arrayinfo) {
+		printf("Elements: '%d'\n",dt->arrayinfo->elements);
+		printf("LowerBound: '%d'\n",dt->arrayinfo->lowerbound);
+	}
+	printf("Flags: '%s'\n",dt->flags ? "yes" : "none");
+	if(dt->flags) {
+		if(dt->flags->category) printf("Category: '%s'\n",dt->flags->category);
+		if(dt->flags->pdomapping) printf("PdOMapping: '%s'\n",dt->flags->pdomapping);
+		if(dt->flags->access) {
+			if(dt->flags->access->access) printf("Access: '%s'\n",dt->flags->access->access);
+		}
+	}
+	for(DataType* si : dt->subitems) {
+		printf("SubItem:\n");
+		printDataTypeVerbose(si);
+	}
+};
 
 void parseXMLGroup(const tinyxml2::XMLElement* xmlgroup) {
 	Group* group = new Group();
@@ -543,7 +588,7 @@ void parseXMLDistributedClock(const tinyxml2::XMLElement* xmldc, DistributedCloc
 	}
 }
 
-void parseXMLObject(const tinyxml2::XMLElement* xmlobject, Dictionary* dict = NULL, Object* parent = NULL) {
+void parseXMLObject(const tinyxml2::XMLElement* xmlobject, Dictionary* dict, Object* parent = NULL) {
 	Object* obj = new Object;
 	for (const tinyxml2::XMLElement* objchild = xmlobject->FirstChildElement();
 		objchild != 0; objchild = objchild->NextSiblingElement())
@@ -571,7 +616,7 @@ void parseXMLObject(const tinyxml2::XMLElement* xmlobject, Dictionary* dict = NU
 					obj->defaultdata = infochild->GetText();
 				} else
 				if(0 == strcmp(infochild->Name(),"SubItem")) {
-					parseXMLObject(infochild,NULL,obj);
+					parseXMLObject(infochild,dict,obj);
 				} else
 				{
 					printf("Unhandled Device/Profile/Objects/Object/Info element: '%s' = '%s'\n",objchild->Name(),objchild->GetText());
@@ -618,19 +663,36 @@ void parseXMLObject(const tinyxml2::XMLElement* xmlobject, Dictionary* dict = NU
 			obj->flags = flags;
 		} else
 		if(0 == strcmp(objchild->Name(),"SubItem")) {
-			parseXMLObject(objchild,NULL,obj);
+			parseXMLObject(objchild,dict,obj);
 		} else
 		{
 			printf("Unhandled Device/Profile/Objects/Object element: '%s' = '%s'\n",objchild->Name(),objchild->GetText());
 		}
 	}
-	
 	if(NULL != parent) {
 		if(NULL == obj->index) obj->index = parent->index;
 		if(NULL == obj->type) obj->type = parent->type;
 		if(NULL == obj->flags) obj->flags = parent->flags;
 		parent->subitems.push_back(obj);
 	} else dict->objects.push_back(obj);
+
+	for(DataType* dt : dict->datatypes) {
+		if(0 == strcmp(obj->type,dt->name)) {
+			obj->datatype = dt;
+			if(parent) {
+				int subitemno = parent->subitems.size()-1;
+				if(parent != NULL && !dt->subitems.empty() &&
+					dt->subitems.size() > subitemno)
+				{
+					auto dtptr = dt->subitems.begin();
+					std::advance(dtptr,subitemno);
+					obj->datatype = (*dtptr);
+					break;
+				}
+			}
+			break;
+		}
+	}
 }
 
 void parseXMLDataType(const tinyxml2::XMLElement* xmldatatype, Dictionary* dict = NULL, DataType* parent = NULL) {
@@ -655,6 +717,23 @@ void parseXMLDataType(const tinyxml2::XMLElement* xmldatatype, Dictionary* dict 
 		} else
 		if(0 == strcmp(dtchild->Name(),"BaseType")) {
 			datatype->basetype = dtchild->GetText();
+		} else
+		if(0 == strcmp(dtchild->Name(),"ArrayInfo")) {
+			ArrayInfo* arrinfo = new ArrayInfo;
+			for (const tinyxml2::XMLElement* arrchild = dtchild->FirstChildElement();
+				arrchild != 0; arrchild = arrchild->NextSiblingElement())
+			{
+				if(0 == strcmp(arrchild->Name(),"LBound")) {
+					arrinfo->lowerbound = arrchild->IntText();
+				} else
+				if(0 == strcmp(arrchild->Name(),"Elements")) {
+					arrinfo->elements = arrchild->IntText();
+				} else
+				{
+					printf("Unhandled Device/Profile/DataTypes/DataType/ArrayInfo element: '%s' = '%s'\n",arrchild->Name(),arrchild->GetText());
+				}
+			}
+			datatype->arrayinfo = arrinfo;
 		} else
 		if(0 == strcmp(dtchild->Name(),"Flags")) {
 			ObjectFlags* flags = new ObjectFlags;
@@ -693,7 +772,7 @@ void parseXMLDataType(const tinyxml2::XMLElement* xmldatatype, Dictionary* dict 
 			datatype->flags = flags;
 		} else
 		if(0 == strcmp(dtchild->Name(),"SubItem")) {
-			parseXMLDataType(dtchild,NULL,datatype);
+			parseXMLDataType(dtchild,dict,datatype);
 		} else
 		{
 			printf("Unhandled Device/Profile/DataTypes/Object element: '%s' = '%s'\n",dtchild->Name(),dtchild->GetText());
@@ -701,11 +780,22 @@ void parseXMLDataType(const tinyxml2::XMLElement* xmldatatype, Dictionary* dict 
 	}
 	
 	if(NULL != parent) {
+		if(NULL != datatype->type) {
+			for(DataType* dt : dict->datatypes) {
+				if(0 == strcmp(datatype->type,dt->name)) {
+					if(dt->arrayinfo) {
+						datatype->type = dt->basetype;
+						parent->type = dt->basetype;
+					}
+				}
+			}
+		}
 		if(NULL == datatype->type) datatype->type = parent->type;
 		if(NULL == datatype->flags) datatype->flags = parent->flags;
 		parent->subitems.push_back(datatype);
-	} else dict->datatypes.push_back(datatype);
-
+	} else {
+		dict->datatypes.push_back(datatype);
+	}
 }
 
 void parseXMLProfile(const tinyxml2::XMLElement* xmlprofile, Device *dev) {
@@ -971,16 +1061,6 @@ void parseXMLElement(const tinyxml2::XMLElement* element, void* data = NULL) {
 	return;
 }
 
-void printObject (Object* o) {
-	printf("Obj: Index: 0x%.04X, Name: '%s'\n",(NULL != o->index ? EC_SII_HexToUint32(o->index) : 0),o->name);
-	for(Object* si : o->subitems) printObject(si);
-};
-
-void printDataType (DataType* dt) {
-	printf("DataType: Name: '%s', Type: '%s'\n",dt->name,dt->type);
-	for(DataType* dsi : dt->subitems) printDataType(dsi);
-};
-
 int encodeSII(const std::string& file, std::string output = "") {
 	if("" == output) output = file + "_eeprom.bin";
 	tinyxml2::XMLDocument doc;
@@ -1012,7 +1092,7 @@ int encodeSII(const std::string& file, std::string output = "") {
 					}
 					printf("DataTypes: %lu\n",dev->profile->dictionary->datatypes.size());
 					for(DataType* dt : dev->profile->dictionary->datatypes) {
-						printDataType(dt);
+						//printDataTypeVerbose(dt);
 					}
 				}
 			}
@@ -1489,30 +1569,12 @@ int encodeSII(const std::string& file, std::string output = "") {
 					auto writeObject = [&out](Object* obj, int& subitem, const int nitems, Dictionary* dict = NULL) {
 						bool objref = false;
 						out << "{ 0x" << std::setw(2) << subitem << ", ";
-						const char* type = NULL;
-						const ObjectFlags* flags = NULL;
-						uint32_t bitsize = 0;
-						for(DataType* datatype : dict->datatypes) {
-							if(0 == strcmp(obj->type,datatype->name)) {
-//								printf("DataType '%s' for subitem %d matches dictionary type '%s' with %lu subitems\n",
-//									obj->type,subitem,datatype->name,datatype->subitems.size());
-								if(!datatype->subitems.empty() &&
-									datatype->subitems.size() > subitem)
-								{
-									auto dtptr = datatype->subitems.begin();
-									std::advance(dtptr,subitem);
-//									printf("SubItem %d: '%s' - '%s'\n",subitem,(*dtptr)->name,(*dtptr)->type);
-									type = (*dtptr)->type;
-									flags = (*dtptr)->flags;
-									bitsize = (*dtptr)->bitsize;
-//									printf("Found type '%s'\n",type);
-									break;
-								}
-							}
-						}
-						if(NULL == type) type = obj->type;
+						DataType* datatype = obj->datatype;
+						const char* type = datatype ? (datatype->type ? datatype->type : datatype->name) : obj->type;
+						const ObjectFlags* flags = obj->flags ? obj->flags : (datatype ? datatype->flags : NULL);
+						uint32_t bitsize = obj->bitsize ? obj->bitsize : (datatype ? datatype->bitsize : 0);
 						if(NULL == type) {
-							printf("\n\nWARNING: DataType is NULL\n\n\n");
+							printf("\033[0;31mWARNING:\033[0m DataType of object '%s' subitem '%d' is \033[0;33mNULL\033[0m\n\n\n",obj->index,subitem);
 						} else
 						if(0 == strncmp(type,"STRING",5)) {
 							out << "DTYPE_VISIBLE_STRING" << ", ";
@@ -1545,16 +1607,18 @@ int encodeSII(const std::string& file, std::string output = "") {
 							out << "DTYPE_UNSIGNED32";
 						} else
 						{ // TODO handle more types
-							printf("\n\nWARNING: Unhandled Datatype '%s'\n\n\n",obj->type);
-
+							printf("\033[0;31mWARNING:\033[0m Unhandled Datatype '%s'\n",obj->type);
 						}
 						out << ", ";
-						out << std::dec << (bitsize == 0 ? obj->bitsize : bitsize);
 
+						out << std::dec << (bitsize == 0 ? obj->bitsize : bitsize);
 						out << ", ";
+
 						// TODO handle the preRW and whatever in read/write-restrictions
-						if(NULL == flags) obj->flags;
-						if(NULL == flags || NULL == flags->access || 0 == strcmp(flags->access->access,"ro")) {
+						if(NULL == flags ||
+						   NULL == flags->access ||
+						   0 == strcmp(flags->access->access,"ro"))
+						{
 							out << "ATYPE_RO";
 						} else
 						if(0 == strcmp(flags->access->access,"rw")) {
@@ -1605,6 +1669,37 @@ int encodeSII(const std::string& file, std::string output = "") {
 						}
 						out << " };\n\n";
 					}
+
+					out << "const _objectlist SDOobjects[] = {\n";
+					for(Object* o : dev->profile->dictionary->objects) {
+						uint16_t index = EC_SII_HexToUint32(o->index);
+						out << "{ 0x" << std::hex << std::setfill('0') << std::setw(4) << std::uppercase <<
+							index;
+						out << ", ";
+
+						if(o->subitems.empty()) {
+							out << "OTYPE_VAR";
+						}
+						out << ", ";
+
+						out << "0x" << std::hex << std::setfill('0') << std::setw(2) << (o->subitems.empty() ? 0 : o->subitems.size()-1);
+						out << ", ";
+
+						out << "0x0";
+						out << ", ";
+
+						out << "&acName" <<
+							std::hex << std::setfill('0') << std::setw(4) << std::uppercase <<
+							index << "[0]";
+						out << ", ";
+
+						out << "&SDO" <<
+							std::hex << std::setfill('0') << std::setw(4) << std::uppercase <<
+							index << "[0]";
+						out << " },\n";
+					}
+					out << "{ 0xFFFF, 0xFF, 0xFF, 0xFF, NULL, NULL } };\n";
+					out << "\n\n";
 
 					out.sync_with_stdio();
 					out.close();
