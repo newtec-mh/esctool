@@ -33,6 +33,8 @@
 #define APP_NAME				"esctool"
 #define APP_VERSION				"0.1"
 
+#define EC_SII_VERSION				(1)
+
 #define ESI_ROOTNODE_NAME			"EtherCATInfo"
 #define ESI_VENDOR_NAME				"Vendor"
 #define ESI_ID_NAME				"Id"
@@ -74,23 +76,32 @@ uint32_t EC_SII_EEPROM_SIZE			(1024);
 // Vendor specific			0x3000-0xFFFE
 // End					0xFFFF
 
+const char BOOLstr[]	= "BOOL";
+const char BITstr[]	= "BOOL";
+const char SINTstr[]	= "SINT";
+const char INTstr[]	= "INT";
+const char DINTstr[]	= "DINT";
+const char USINTstr[]	= "USINT";
+const char UINTstr[]	= "UINT";
+const char UDINTstr[]	= "UDINT";
+const char REALstr[]	= "REAL";
 
 uint8_t getCoEDataType(const char* dt) {
-	if(0 == strcmp(dt,"BOOL") || 0 == strcmp(dt,"BIT")) {
+	if(0 == strcmp(dt,BOOLstr) || 0 == strcmp(dt,BITstr)) {
 		return 0x01;
-	} else if(0 == strcmp(dt,"SINT")) {
+	} else if(0 == strcmp(dt,SINTstr)) {
 		return 0x02;
-	} else if(0 == strcmp(dt,"INT")) {
+	} else if(0 == strcmp(dt,INTstr)) {
 		return 0x03;
-	} else if(0 == strcmp(dt,"DINT")) {
+	} else if(0 == strcmp(dt,DINTstr)) {
 		return 0x04;
-	} else if(0 == strcmp(dt,"USINT")) {
+	} else if(0 == strcmp(dt,USINTstr)) {
 		return 0x05;
-	} else if(0 == strcmp(dt,"UINT")) {
+	} else if(0 == strcmp(dt,UINTstr)) {
 		return 0x06;
-	} else if(0 == strcmp(dt,"UDINT")) {
+	} else if(0 == strcmp(dt,UDINTstr)) {
 		return 0x07;
-	} else if(0 == strcmp(dt,"REAL")) {
+	} else if(0 == strcmp(dt,REALstr)) {
 		return 0x08;
 	}
 	return 0x0;
@@ -137,8 +148,15 @@ unsigned char crc8(unsigned char* ptr, unsigned char len)
 
 bool verbose = false;
 bool writeobjectdict = false;
+bool writeconfig = true;
 bool nosii = false;
-std::string objectdictfile = "objectlist.c";
+// Decide if input from XML should be treated as LE
+bool input_endianness_is_little = false;
+
+#define SOES_DEFAULT_BUFFER_PREALLOC_FACTOR 3
+std::string objectdictfile	= "objectlist.c";
+std::string utypesfile		= "utypes.h";
+std::string ecatconfig		= "ecat_options.h";
 
 uint8_t* sii_eeprom = NULL;
 
@@ -259,6 +277,7 @@ struct Object {
 	uint32_t bitsize = 0;
 	uint32_t bitoffset = 0;
 	const char* defaultdata = NULL;
+	const char* defaultstring = NULL;
 	ObjectFlags* flags = NULL;
 	std::list<Object*> subitems;
 };
@@ -269,8 +288,15 @@ struct Dictionary {
 };
 
 struct Profile {
-	ChannelInfo* channelinfo;
-	Dictionary* dictionary;
+	ChannelInfo* channelinfo = NULL;
+	Dictionary* dictionary = NULL;
+};
+
+struct SyncUnit {
+	bool separate_su = false;
+	bool separate_frame = false;
+	bool depend_on_input_state = false;
+	bool frame_repeat_support = false;
 };
 
 struct Device {
@@ -288,7 +314,8 @@ struct Device {
 	uint8_t configdata[EC_SII_CONFIGDATA_SIZEB];
 	std::list<Pdo*> txpdo;
 	std::list<Pdo*> rxpdo;
-	Profile* profile;
+	SyncUnit* syncunit = NULL;
+	Profile* profile = NULL;
 };
 
 std::list<Group*> groups;
@@ -315,10 +342,12 @@ uint32_t EC_SII_HexToUint32(const char* s) {
 	return r;
 }
 
-std::string CNameify(const char* str) {
+std::string CNameify(const char* str, bool capitalize = false) {
 	std::string r(str);
 	for(uint8_t i = 0; i < r.size(); ++i) {
-		r[i] = std::tolower(r[i]);
+		if(capitalize) {
+			r[i] = std::toupper(r[i]);
+		} else r[i] = std::tolower(r[i]);
 		if(r[i] == ' ') r[i] = '_';
 	}
 	return r;
@@ -519,6 +548,38 @@ void parseXMLPdo(const tinyxml2::XMLElement* xmlpdo, std::list<Pdo*>* pdolist) {
 	pdolist->push_back(pdo);
 }
 
+void parseXMLSyncUnit(const tinyxml2::XMLElement* xmlsu, Device* dev) {
+	SyncUnit* su = new SyncUnit();
+	for (const tinyxml2::XMLAttribute* attr = xmlsu->FirstAttribute();
+		attr != 0; attr = attr->Next())
+	{
+		if(0 == strcmp(attr->Name(),"SeparateSu")) {
+			if(tinyxml2::XML_SUCCESS != attr->QueryBoolValue(&su->separate_su))
+				su->separate_su = (attr->IntValue() == 1) ? true : false;
+			printf("Device/Su/@SeparateSu: %s ('%s')\n",su->separate_su ? "yes" : "no",attr->Value());
+		} else
+		if(0 == strcmp(attr->Name(),"SeparateFrame")) {
+			if(tinyxml2::XML_SUCCESS != attr->QueryBoolValue(&su->separate_frame))
+				su->separate_frame = (attr->IntValue() == 1) ? true : false;
+			printf("Device/Su/@SeparateFrame: %s ('%s')\n",su->separate_frame ? "yes" : "no",attr->Value());
+		} else
+		if(0 == strcmp(attr->Name(),"DependOnInputState")) {
+			if(tinyxml2::XML_SUCCESS != attr->QueryBoolValue(&su->depend_on_input_state))
+				su->depend_on_input_state = (attr->IntValue() == 1) ? true : false;
+			printf("Device/Su/@DependOnInputState: %s ('%s')\n",su->depend_on_input_state ? "yes" : "no",attr->Value());
+		} else
+		if(0 == strcmp(attr->Name(),"FrameRepeatSupport")) {
+			if(tinyxml2::XML_SUCCESS != attr->QueryBoolValue(&su->frame_repeat_support))
+				su->frame_repeat_support = (attr->IntValue() == 1) ? true : false;
+			printf("Device/Su/@FrameRepeatSupport: %s ('%s')\n",su->frame_repeat_support ? "yes" : "no",attr->Value());
+		} else
+		{
+			printf("Unhandled Device/%s Attribute: '%s' = '%s'\n",xmlsu->Name(),attr->Name(),attr->Value());
+		}
+	}
+	dev->syncunit = su;
+}
+
 void parseXMLDistributedClock(const tinyxml2::XMLElement* xmldc, DistributedClock* dc) {
 	for (const tinyxml2::XMLElement* dcchild = xmldc->FirstChildElement();
 		dcchild != 0; dcchild = dcchild->NextSiblingElement())
@@ -624,6 +685,9 @@ void parseXMLObject(const tinyxml2::XMLElement* xmlobject, Dictionary* dict, Obj
 			{
 				if(0 == strcmp(infochild->Name(),"DefaultData")) {
 					obj->defaultdata = infochild->GetText();
+				} else
+				if(0 == strcmp(infochild->Name(),"DefaultString")) {
+					obj->defaultstring = infochild->GetText();
 				} else
 				if(0 == strcmp(infochild->Name(),"SubItem")) {
 					parseXMLObject(infochild,dict,obj);
@@ -910,6 +974,9 @@ void parseXMLDevice(const tinyxml2::XMLElement* xmldevice) {
 		if(0 == strcmp(child->Name(),"Mailbox")) {
 			parseXMLMailbox(child,dev);
 		} else
+		if(0 == strcmp(child->Name(),"Su")) {
+			parseXMLSyncUnit(child,dev);
+		} else
 		if(0 == strcmp(child->Name(),"Fmmu")) {
 			FMMU* fmmu = new FMMU();
 			fmmu->type = child->GetText();
@@ -1093,7 +1160,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 		Device* dev = devices.front();
 		if(!devices.empty()) {
 			printf("Profile: %s\n",dev->profile ? "yes" : "no");
-
 			if(NULL != dev->profile) {
 				printf("Dictionary: %s\n",dev->profile->dictionary ? "yes" : "no");
 				if(NULL != dev->profile->dictionary) {
@@ -1107,6 +1173,8 @@ int encodeSII(const std::string& file, std::string output = "") {
 					}
 				}
 			}
+			printf("Distributed Clock (DC): %s\n",dev->dc ? "yes" : "no");
+
 			// Write SII EEPROM file
 			if(!nosii) {
 				printf("Encoding '%s' to '%s' EEPROM\n",file.c_str(),output.c_str());
@@ -1175,12 +1243,15 @@ int encodeSII(const std::string& file, std::string output = "") {
 					*(p++) = mailbox_proto & 0xFF;
 					*(p++) = (mailbox_proto >> 8) & 0xFF;
 
-					// EEPROM Size 0x003E TODO
+					// EEPROM Size 0x003E
+					p = sii_eeprom + EC_SII_EEPROM_VERSION_OFFSET_BYTE - 2;
+					uint16_t sz = ((EC_SII_EEPROM_SIZE * 8) / 1024) - 1;
+					*(p++) = sz & 0xFF;
+					*(p++) = (sz >> 8) & 0xFF;
 
-					// EEPROM Version 0x003E (currently 1)
-					p = sii_eeprom + EC_SII_EEPROM_VERSION_OFFSET_BYTE;
-					*(p++) = 0x1;
-					*(p++) = 0x0;
+					// Version
+					*(p++) = EC_SII_VERSION & 0xFF;
+					*(p++) = (EC_SII_VERSION >> 8) & 0xFF;
 
 					p = sii_eeprom + EC_SII_EEPROM_FIRST_CAT_HDR_OFFSET_BYTE;
 					// First category header (seems to be STRINGS usually) (Word 0x040)
@@ -1380,52 +1451,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 						p += smpadding;
 					}
 
-					// DC category if needed
-					if(dev->dc) {
-						*(p++) = EEPROMCategoryDC & 0xFF;
-						*(p++) = (EEPROMCategoryDC >> 8) & 0xFF;
-						// Each DC Opmode is 0xC words
-						uint16_t dccatlen = dev->dc->opmodes.size() * 0xC;
-						*(p++) = dccatlen & 0xFF;
-						*(p++) = (dccatlen >> 8) & 0xFF;
-
-						for(auto dc : dev->dc->opmodes) {
-							uint32_t cts0 = dc->cycletimesync0;
-							*(p++) = cts0 & 0xFF;
-							*(p++) = (cts0 >> 8) & 0xFF;
-							*(p++) = (cts0 >> 16) & 0xFF;
-							*(p++) = (cts0 >> 24) & 0xFF;
-
-							uint32_t sts0 = dc->shifttimesync0;
-							*(p++) = sts0 & 0xFF;
-							*(p++) = (sts0 >> 8) & 0xFF;
-							*(p++) = (sts0 >> 16) & 0xFF;
-							*(p++) = (sts0 >> 24) & 0xFF;
-
-							uint32_t sts1 = dc->shifttimesync1;
-							*(p++) = sts1 & 0xFF;
-							*(p++) = (sts1 >> 8) & 0xFF;
-							*(p++) = (sts1 >> 16) & 0xFF;
-							*(p++) = (sts1 >> 24) & 0xFF;
-
-							int16_t cts1f = dc->cycletimesync1factor;
-							*(p++) = cts1f & 0xFF;
-							*(p++) = (cts1f >> 8) & 0xFF;
-
-							uint16_t aa = dc->assignactivate;
-							*(p++) = aa & 0xFF;
-							*(p++) = (aa >> 8) & 0xFF;
-
-							int16_t cts0f = dc->cycletimesync0factor;
-							*(p++) = cts0f & 0xFF;
-							*(p++) = (cts0f >> 8) & 0xFF;
-
-							*(p++) = 0x0; // Name index into STRINGS, unsupported TODO
-							*(p++) = 0x0; // Description index into STRINGS, unsupported TODO
-							p += 4; // Reserved
-						}
-					}
-
 					// TXPDO category if needed
 					if(!dev->txpdo.empty())
 					{
@@ -1507,6 +1532,65 @@ int encodeSII(const std::string& file, std::string output = "") {
 						}
 					}
 
+					// SyncUnit if necessary
+					if(dev->syncunit)
+					{
+						*(p++) = EEPROMCategorySyncUnit & 0xFF;
+						*(p++) = (EEPROMCategorySyncUnit >> 8) & 0xFF;
+						// For now, its 1 byte long
+						*(p++) = (0x1) & 0xFF;
+						*(p++) = (0x1 >> 8) & 0xFF;
+						// TODO
+						*(p++) = (0x0 & 0xFF);
+						*(p++) = (0x0 >> 8) & 0xFF;
+					}
+
+					// DC category if needed
+					if(dev->dc) {
+						*(p++) = EEPROMCategoryDC & 0xFF;
+						*(p++) = (EEPROMCategoryDC >> 8) & 0xFF;
+						// Each DC Opmode is 0xC words
+						uint16_t dccatlen = dev->dc->opmodes.size() * 0xC;
+						*(p++) = dccatlen & 0xFF;
+						*(p++) = (dccatlen >> 8) & 0xFF;
+
+						for(auto dc : dev->dc->opmodes) {
+							uint32_t cts0 = dc->cycletimesync0;
+							*(p++) = cts0 & 0xFF;
+							*(p++) = (cts0 >> 8) & 0xFF;
+							*(p++) = (cts0 >> 16) & 0xFF;
+							*(p++) = (cts0 >> 24) & 0xFF;
+
+							uint32_t sts0 = dc->shifttimesync0;
+							*(p++) = sts0 & 0xFF;
+							*(p++) = (sts0 >> 8) & 0xFF;
+							*(p++) = (sts0 >> 16) & 0xFF;
+							*(p++) = (sts0 >> 24) & 0xFF;
+
+							uint32_t sts1 = dc->shifttimesync1;
+							*(p++) = sts1 & 0xFF;
+							*(p++) = (sts1 >> 8) & 0xFF;
+							*(p++) = (sts1 >> 16) & 0xFF;
+							*(p++) = (sts1 >> 24) & 0xFF;
+
+							int16_t cts1f = dc->cycletimesync1factor;
+							*(p++) = cts1f & 0xFF;
+							*(p++) = (cts1f >> 8) & 0xFF;
+
+							uint16_t aa = dc->assignactivate;
+							*(p++) = aa & 0xFF;
+							*(p++) = (aa >> 8) & 0xFF;
+
+							int16_t cts0f = dc->cycletimesync0factor;
+							*(p++) = cts0f & 0xFF;
+							*(p++) = (cts0f >> 8) & 0xFF;
+
+							*(p++) = 0x0; // Name index into STRINGS, unsupported TODO
+							*(p++) = 0x0; // Description index into STRINGS, unsupported TODO
+							p += 4; // Reserved
+						}
+					}
+
 					*(p++) = 0xFF; // End
 					*(p++) = 0xFF;
 
@@ -1529,77 +1613,223 @@ int encodeSII(const std::string& file, std::string output = "") {
 				}
 			}
 
+			if(writeconfig) {
+				std::ofstream configout;
+				configout.open(ecatconfig.c_str(), std::ios::out | std::ios::trunc);
+				if(!configout.fail()) {
+					printf("Writing SOES compatible configuration to '%s'\n",ecatconfig.c_str());
+					configout << "/** Autogenerated by " << APP_NAME << " v" << APP_VERSION << " */\n\n";
+					configout << "#ifndef __ECAT_OPTIONS_H__\n";
+					configout << "#define __ECAT_OPTIONS_H__\n\n";
+					configout << "#include \"cc.h\"\n\n";
+
+					uint8_t coedetails = 0x0;
+					if(dev->mailbox) {
+						configout << "#define USE_FOE          " << std::dec << (dev->mailbox->foe ? 1 : 0) << "\n";
+						configout << "#define USE_EOE          " << std::dec << (dev->mailbox->eoe ? 1 : 0) << "\n";
+						configout << "\n";
+					} else {
+						configout << "#define USE_FOE          0\n";
+						configout << "#define USE_EOE          0\n";
+						configout << "\n";
+					}
+
+					uint16_t defaultmbxsz = 128;
+					for(SyncManager* sm : dev->syncmanagers) {
+						if(0 == strcmp(sm->type,"MBoxOut") || 0 == strcmp(sm->type,"MBoxIn")) {
+							defaultmbxsz = sm->defaultsize;
+							if(sm->defaultsize != 0) {
+								configout << "#define MBXSIZE            " << std::dec << sm->defaultsize << "\n";
+								configout << "#define MBXSIZEBOOT        " << std::dec << sm->defaultsize << "\n";
+								if(dev->mailbox && dev->mailbox->coe_completeaccess) {
+									uint16_t bufsz = SOES_DEFAULT_BUFFER_PREALLOC_FACTOR*defaultmbxsz;
+									uint16_t maxbufsz = bufsz;
+									for(SyncManager* sm : dev->syncmanagers) {
+										if(0 == strcmp(sm->type,"Outputs") ||
+										   0 == strcmp(sm->type,"Inputs"))
+										{
+											maxbufsz = std::max(maxbufsz,sm->defaultsize);
+										}
+									}
+									uint8_t prealloc_factor = SOES_DEFAULT_BUFFER_PREALLOC_FACTOR;
+									while(bufsz < maxbufsz) {
+										++prealloc_factor;
+										bufsz = defaultmbxsz*prealloc_factor;
+									}
+									configout << "#define PREALLOC_FACTOR    " << std::dec << (uint32_t) prealloc_factor << "\n";
+								}
+								configout << "\n";
+								break;
+							}
+						}
+					}
+
+					for(SyncManager* sm : dev->syncmanagers) {
+						if(0 == strcmp(sm->type,"MBoxOut")) {
+							configout << "#define MBX0_sma         " << "0x" << std::hex << sm->startaddress << "\n";
+							configout << "#define MBX0_sml         " << std::dec << sm->defaultsize << "\n";
+							configout << "#define MBX0_sme         MBX0_sma+MBX0_sml-1\n";
+							configout << "#define MBX0_smc         " << "0x" << std::hex << (uint32_t) sm->controlbyte << "\n";
+
+							configout << "#define MBX0_sma_b       " << "0x" << std::hex << sm->startaddress << "\n";
+							configout << "#define MBX0_sml_b       " << std::dec << sm->defaultsize << "\n";
+							configout << "#define MBX0_sme_b       MBX0_sma_b+MBX0_sml_b-1\n";
+							configout << "#define MBX0_smc_B       " << "0x" << std::hex << (uint32_t) sm->controlbyte <<"\n";
+							configout << "\n";
+						} else
+						if(0 == strcmp(sm->type,"MBoxIn")) {
+							configout << "#define MBX1_sma         " << "0x" << std::hex << sm->startaddress << "\n";
+							configout << "#define MBX1_sml         " << std::dec << sm->defaultsize << "\n";
+							configout << "#define MBX1_sme         MBX1_sma+MBX1_sml-1\n";
+							configout << "#define MBX1_smc         " << "0x" << std::hex << (uint32_t) sm->controlbyte <<"\n";
+
+							configout << "#define MBX1_sma_b       " << "0x" << std::hex << sm->startaddress << "\n";
+							configout << "#define MBX1_sml_b       " << std::dec << sm->defaultsize << "\n";
+							configout << "#define MBX1_sme_b       MBX1_sma_b+MBX1_sml_b-1\n";
+							configout << "#define MBX1_smc_b       " << "0x" << std::hex << (uint32_t) sm->controlbyte <<"\n";
+							configout << "\n";
+						} else
+						if(0 == strcmp(sm->type,"Outputs")) { // TODO verify that the actual assigned SyncManager *is* 2
+							configout << "#define SM2_sma          " << "0x" << std::hex << sm->startaddress << "\n";
+							configout << "#define SM2_smc          " << "0x" << std::hex << (uint32_t) sm->controlbyte << "\n";
+							configout << "#define SM2_act          " << (sm->enable ? 1 : 0) << "\n";
+							configout << "#define MAX_RXPDO_SIZE   " << std::dec << sm->defaultsize << "\n";
+							configout << "\n";
+						} else
+						if(0 == strcmp(sm->type,"Inputs")) { // TODO verify that the actual assigned SyncManager *is* 3
+							configout << "#define SM3_sma          " << "0x" << std::hex << sm->startaddress << "\n";
+							configout << "#define SM3_smc          " << "0x" << std::hex << (uint32_t) sm->controlbyte << "\n";
+							configout << "#define SM3_act          " << (sm->enable ? 1 : 0) << "\n";
+							configout << "#define MAX_TXPDO_SIZE   " << std::dec << sm->defaultsize << "\n";
+							configout << "\n";
+						}
+					}
+					uint16_t dynrxpdo = 0;
+					for(Pdo* pdo : dev->rxpdo) {
+						if(!pdo->fixed) ++dynrxpdo;
+					}
+					uint16_t dyntxpdo = 0;
+					for(Pdo* pdo : dev->txpdo) {
+						if(!pdo->fixed) ++dyntxpdo;
+					}
+					configout << "#define MAX_MAPPINGS_SM2      " << std::dec << dynrxpdo << "\n";
+					configout << "#define MAX_MAPPINGS_SM3      " << std::dec << dyntxpdo << "\n";
+
+					configout << "\n";
+					configout << "#endif /* __ECAT_OPTIONS_H__ */\n";
+					configout.sync_with_stdio();
+					configout.close();
+				}
+			}
+
+			// Create a boilerplate object dictionary if nothing exists and CoE is enabled
+/*			if(writeobjectdict && (NULL == dev->profile || dev->profile->dictionary) && 
+				dev->mailbox && dev->mailbox->coe_sdoinfo)
+			{
+				if(!dev->profile) dev->profile = new Profile;
+				dev->profile->dictionary = new Dictionary;
+				Object* o = new Object;
+			}*/
+
 			// Write slave stack object dictionary
-			if(writeobjectdict && NULL != dev->profile->dictionary) {
+			if(writeobjectdict && NULL != dev->profile && NULL != dev->profile->dictionary) {
 				std::ofstream typesout;
-				typesout.open("utypes.h", std::ios::out | std::ios::trunc);
+				typesout.open(utypesfile.c_str(), std::ios::out | std::ios::trunc);
 				if(!typesout.fail()) {
+					printf("Writing SOES compatible type definitions to '%s'\n",utypesfile.c_str());
 					typesout << "/** Autogenerated by " << APP_NAME << " v" << APP_VERSION << " */\n\n";
 					typesout << "#ifndef UTYPES_H\n";
 					typesout << "#define UTYPES_H\n\n";
 					typesout << "#include <stdint.h>\n";
 					typesout << "\n";
+
+					auto getCType = [](const char* type) {
+						if(0 == strncmp(type,BOOLstr,4) || 0 == strcmp(type,BITstr)) {
+							return "bool";
+						} else
+						if(0 == strcmp(type,SINTstr)) {
+							return "int8_t";
+						} else
+						if(0 == strcmp(type,INTstr)) {
+							return "int16_t";
+						} else
+						if(0 == strcmp(type,DINTstr)) {
+							return "int32_t";
+						} else
+						if(0 == strcmp(type,USINTstr)) {
+							return "uint8_t";
+						} else
+						if(0 == strcmp(type,UINTstr)) {
+							return "uint16_t";
+						} else
+						if(0 == strcmp(type,UDINTstr)) {
+							return "uint32_t";
+						}
+						printf("Warning: Unable to find C-type for '%s'\n",type);
+						return (const char*)NULL;
+					};
+
 					for(Object* o : dev->profile->dictionary->objects) {
 						uint16_t index = EC_SII_HexToUint32(o->index);
 						if(index < 0x2000) continue;
-						typesout << "typedef struct {\n";
-						int subitem = 0;
-						for(Object* si : o->subitems) {
-							if(0 == subitem) {
-								++subitem;
-								continue;
-							}
 
-							const char* type = si->datatype ? 
-								(si->datatype->type ? si->datatype->type :
-									si->datatype->name) :
+						if(!o->subitems.empty()) {
+							typesout << "typedef struct {\n";
+							int subitem = 0;
+							for(Object* si : o->subitems) {
+								if(0 == subitem) {
+									++subitem;
+									continue;
+								}
+
+								const char* type = si->datatype ? 
+									(si->datatype->type ? si->datatype->type :
+										si->datatype->name) :
+									o->type;
+								if(NULL == type) {
+									printf("WARNING: Could not determine C-datatype for '%s':'%s'\n",o->name,si->name);
+									continue;
+								}
+								typesout << "\t";
+								typesout << getCType(type);
+								typesout << " ";
+								typesout << CNameify(si->name);
+								typesout << ";";
+								typesout << " /* ";
+								typesout << si->index << ".";
+								typesout << std::uppercase
+									<< std::hex
+									<< std::setfill('0')
+									<< std::setw(2)
+									<< subitem;
+								typesout << "*/\n";
+								++subitem;
+							}
+							typesout << "} _" << CNameify(o->name,true) << ";\n\n";
+							typesout << "extern _"
+								<< CNameify(o->name,true)
+								<< " "
+								<< CNameify(o->name,true)
+								<< ";\n\n";
+						} else {
+							const char* type = o->datatype ? 
+								(o->datatype->type ? o->datatype->type :
+									o->datatype->name) :
 								o->type;
-							if(NULL == type) {
-								printf("WARNING: Could not determine C-datatype for '%s':'%s'\n",o->name,si->name);
-								continue;
-							}
-							typesout << "\t";
-							if(0 == strncmp(type,"BOOL",4)) {
-								typesout << "bool";
-							} else
-							if(0 == strcmp(type,"SINT")) {
-								typesout << "int8_t";
-							} else
-							if(0 == strcmp(type,"INT")) {
-								typesout << "int16_t";
-							} else
-							if(0 == strcmp(type,"DINT")) {
-								typesout << "int32_t";
-							} else
-							if(0 == strcmp(type,"USINT")) {
-								typesout << "uint8_t";
-							} else
-							if(0 == strcmp(type,"UINT")) {
-								typesout << "uint16_t";
-							} else
-							if(0 == strcmp(type,"UDINT")) {
-								typesout << "uint32_t";
-							}
-							typesout << " ";
-							typesout << CNameify(si->name);
-							typesout << ";";
-							typesout << " /* ";
-							typesout << si->index << ".";
-							typesout << std::uppercase
-								 << std::hex
-								 << std::setfill('0')
-								 << std::setw(2)
-								 << subitem;
-							typesout << "*/\n";
-							++subitem;
+							typesout << "extern"
+								 << " "
+								 << getCType(type)
+								 << " "
+								 << CNameify(o->name)
+								 << ";\n\n";
 						}
-						typesout << "} " << o->name << ";\n\n";
 					}
 					typesout << "#endif /* UTYPES_H */\n";
 					typesout.sync_with_stdio();
 					typesout.close();
+				} else {
+					printf("Couln't open '%s' for writing\n",utypesfile.c_str());
 				}
-
 
 				std::ofstream out;
 				out.open(objectdictfile.c_str(), std::ios::out | std::ios::trunc);
@@ -1607,7 +1837,7 @@ int encodeSII(const std::string& file, std::string output = "") {
 					printf("Writing SOES compatible object dictionary to '%s'\n",objectdictfile.c_str());
 					out << "/** Autogenerated by " << APP_NAME << " v" << APP_VERSION << " */\n"
 					<< "#include \"esc_coe.h\"\n"
-					<< "#include \"utypes.h\"\n"
+					<< "#include \"" << utypesfile << "\"\n"
 					<< "#include <stddef.h>\n"
 					<< "\n";
 
@@ -1648,8 +1878,20 @@ int encodeSII(const std::string& file, std::string output = "") {
 							    << std::uppercase
 							    << EC_SII_HexToUint32(o->index);
 							out << "_00[] = \"";
+							if(NULL != o->defaultstring) {
+								out << o->defaultstring;
+							} else
 							if(NULL != o->defaultdata) {
-								out << o->defaultdata;
+								// Can we assume strings set in DefaultData are
+								// hex encoded byte values?
+								std::string str("");
+								for(size_t i = 0; i < strlen(o->defaultdata); i+=2) {
+									char s[3];
+									strncpy(s,&(o->defaultdata[i]),2);
+									s[2] = '\0';
+									str += (char)(strtol(s,NULL,16));
+								}
+								out << str;
 							} else {
 								out << "(null)";
 							}
@@ -1658,7 +1900,7 @@ int encodeSII(const std::string& file, std::string output = "") {
 					}
 					out << "\n";
 
-					auto writeObject = [&out](Object* obj, int& subitem, const int nitems, Dictionary* dict = NULL) {
+					auto writeObject = [&out](Object* obj, Object* parent, int& subitem, const int nitems, Dictionary* dict = NULL) {
 						bool objref = false;
 						out << "{ 0x"
 						    << std::setw(2)
@@ -1686,33 +1928,44 @@ int encodeSII(const std::string& file, std::string output = "") {
 							out << "_00) << 3";
 							objref = true;
 						} else  // capitalization of all these strings?
-						if(0 == strncmp(type,"BOOL",4)) {
+						{
+						if(0 == strncmp(type,BOOLstr,4) || 0 == strcmp(type,BITstr)) {
 							out << "DTYPE_BOOLEAN";
+							bitsize = 1;
 						} else
-						if(0 == strcmp(type,"SINT")) {
+						if(0 == strcmp(type,SINTstr)) {
 							out << "DTYPE_INTEGER8";
+							bitsize = 8;
 						} else
-						if(0 == strcmp(type,"INT")) {
+						if(0 == strcmp(type,INTstr)) {
 							out << "DTYPE_INTEGER16";
+							bitsize = 16;
 						} else
-						if(0 == strcmp(type,"DINT")) {
+						if(0 == strcmp(type,DINTstr)) {
 							out << "DTYPE_INTEGER32";
+							bitsize = 32;
 						} else
-						if(0 == strcmp(type,"USINT")) {
+						if(0 == strcmp(type,USINTstr)) {
 							out << "DTYPE_UNSIGNED8";
+							bitsize = 8;
 						} else
-						if(0 == strcmp(type,"UINT")) {
+						if(0 == strcmp(type,UINTstr)) {
 							out << "DTYPE_UNSIGNED16";
+							bitsize = 16;
 						} else
-						if(0 == strcmp(type,"UDINT")) {
+						if(0 == strcmp(type,UDINTstr)) {
 							out << "DTYPE_UNSIGNED32";
+							bitsize = 32;
 						} else
-						{ // TODO handle more types
+						{ // TODO handle more types?
 							printf("\033[0;31mWARNING:\033[0m Unhandled Datatype '%s'\n",obj->type);
+							out << "DTYPE_UNSIGNED32"; // Default
+							bitsize = 32;
 						}
 						out << ", ";
 
 						out << std::dec << (bitsize == 0 ? obj->bitsize : bitsize);
+						}
 						out << ", ";
 
 						// TODO handle the preRW and whatever in read/write-restrictions
@@ -1744,14 +1997,39 @@ int encodeSII(const std::string& file, std::string output = "") {
 						out << ", ";
 
 						if(!objref) {
-							if(NULL != obj->defaultdata) {
-								out << "0x"
-								    << obj->defaultdata
-								    << ", NULL }";
-							} else {
-
-								out << 0
-								    << ", NULL }";
+							if((index <= 0x2000 || (0 == subitem || NULL == parent) && (0 != nitems))) {
+								if(NULL != obj->defaultdata) {
+									// TODO: can we assume data is hex or smth? HexDecStr...
+									out << "0x";
+									if(input_endianness_is_little) {
+										for(size_t i = strlen(obj->defaultdata); i > 0; i-=2) {
+											char s[3];
+											strncpy(s,&(obj->defaultdata[i-2]),2);
+											s[2] = '\0';
+											out << s;
+										}
+									} else {
+										out << obj->defaultdata;
+									}
+									out << ", NULL }";
+								} else {
+									out << 0
+									<< ", NULL }";
+								}
+							} else { // Reference the objects from utypes.h
+								if(0 == nitems) {
+									out << "0, ";
+									out << "&";
+									out << CNameify(obj->name);
+									out << " }";
+								} else {
+									out << "0, ";
+									out << "&("
+									<< CNameify(parent->name,true)
+									<< "."
+									<< CNameify(obj->name);
+									out << ") }";
+								}
 							}
 						} else {
 							out << "0, ";
@@ -1776,11 +2054,11 @@ int encodeSII(const std::string& file, std::string output = "") {
 						    << EC_SII_HexToUint32(o->index);
 						out << "[] = {\n";
 						if(o->subitems.empty()) {
-							writeObject(o,subitem,0,dev->profile->dictionary);
+							writeObject(o, NULL, subitem, 0, dev->profile->dictionary);
 						} else {
 							// TODO handle several levels?
 							for(Object* si : o->subitems) {
-								writeObject(si,subitem,o->subitems.size(),dev->profile->dictionary);
+								writeObject(si,o,subitem,o->subitems.size(),dev->profile->dictionary);
 							}
 						}
 						out << " };\n\n";
@@ -1845,7 +2123,34 @@ int encodeSII(const std::string& file, std::string output = "") {
 					printf("Could not open '%s' for writing object dictionary\n",objectdictfile.c_str());
 				}
 			} else if (writeobjectdict) {
-				printf("No dictionary could be parsed...\n");
+				printf("No dictionary could be parsed, writing boilerplate '%s' and '%s'\n",utypesfile.c_str(),objectdictfile.c_str());
+				std::ofstream typesout;
+				typesout.open(utypesfile.c_str(), std::ios::out | std::ios::trunc);
+				if(!typesout.fail()) {
+					typesout << "/** Autogenerated by " << APP_NAME << " v" << APP_VERSION << " */\n\n";
+					typesout << "#ifndef UTYPES_H\n";
+					typesout << "#define UTYPES_H\n\n";
+					typesout << "#include <stdint.h>\n";
+					typesout << "\n";
+					typesout << "#endif /* UTYPES_H */\n";
+					typesout.sync_with_stdio();
+					typesout.close();
+				} else {
+					printf("Couldn't open '%s' for writing\n",utypesfile.c_str());
+				}
+				std::ofstream objout;
+				objout.open(objectdictfile.c_str(), std::ios::out | std::ios::trunc);
+				if(!objout.fail()) {
+					objout << "/** Autogenerated by " << APP_NAME << " v" << APP_VERSION << " */\n\n";
+					objout << "#include \"esc_coe.h\"\n";
+					objout << "const _objectlist SDOobjects[] = {\n";
+					objout << "{ 0xFFFF, 0xFF, 0xFF, 0xFF, NULL, NULL } };\n";
+					objout << "\n\n";
+					objout.sync_with_stdio();
+					objout.close();
+				} else {
+					printf("Couldn't open '%s' for writing\n",objectdictfile.c_str());
+				}
 			}
 
 			printf("Finished\n");
@@ -1896,6 +2201,10 @@ int decodeSII(const std::string& file) {
 	ptr += 4;
 
 	// TODO eepromsize and version
+	ptr = p + EC_SII_EEPROM_FIRST_CAT_HDR_OFFSET_BYTE-4;
+	printf("Size: \033[0;32m0x%.02X \033[0;36m[Esi:DeviceType:Eeprom:ByteSize]\033[0m\n",*(uint16_t*)ptr);
+	ptr += 2;
+	printf("Version: \033[0;32m0x%.02X\033[0m\n",*(uint16_t*)ptr);
 
 	ptr = p + EC_SII_EEPROM_FIRST_CAT_HDR_OFFSET_BYTE; // Categories
 
@@ -2025,6 +2334,7 @@ int decodeSII(const std::string& file) {
 					printf("Status Register: \033[0;32m0x%.02X \033[0;36m[dont care]\033[0m\n",*(ptr++));
 					uint8_t enable = *(ptr++);
 					printf("Enable state: \033[0;36m[Esi:DeviceType:Sm:Enable]\033[0m\n");
+					if(0x0 == enable) printf("- isn't enabled\n");
 					if(enable & 0x1) printf("- is enabled\n");
 					if(enable & 0x2) printf("- has fixed content\n");
 					if(enable & 0x4) printf("- is virtual\n");
@@ -2158,12 +2468,24 @@ int main(int argc, char* argv[])
 		if(0 == strcmp(argv[i],"--verbose") ||
 		   0 == strcmp(argv[i],"-v"))
 		{
+			printf("Verbose mode: ON\n");
 			verbose = true;
 		} else
 		if(0 == strcmp(argv[i],"--nosii") ||
 		   0 == strcmp(argv[i],"-n"))
 		{
+			printf("Not generating SII EEPROM binary\n");
 			nosii = true;
+		} else
+		if(0 == strcmp(argv[i],"--bigendian") ||
+		   0 == strcmp(argv[i],"-be"))
+		{
+			input_endianness_is_little = false;
+		} else
+		if(0 == strcmp(argv[i],"--littleendian") ||
+		   0 == strcmp(argv[i],"-le"))
+		{
+			input_endianness_is_little = true;
 		} else
 		if(0 == strcmp(argv[i],"--dictionary") ||
 		   0 == strcmp(argv[i],"-d"))
@@ -2185,7 +2507,7 @@ int main(int argc, char* argv[])
 		printf("Assuming Object Dictionary should be generated...\n");
 		writeobjectdict = true;
 	}
-
+	printf("\n");
 	if("" == inputfile) {
 		printUsage(argv[0]);
 		return -EINVAL;
