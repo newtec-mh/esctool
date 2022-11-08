@@ -76,15 +76,31 @@ uint32_t EC_SII_EEPROM_SIZE			(1024);
 // Vendor specific			0x3000-0xFFFE
 // End					0xFFFF
 
-const char BOOLstr[]	= "BOOL";
-const char BITstr[]	= "BOOL";
-const char SINTstr[]	= "SINT";
-const char INTstr[]	= "INT";
-const char DINTstr[]	= "DINT";
-const char USINTstr[]	= "USINT";
-const char UINTstr[]	= "UINT";
-const char UDINTstr[]	= "UDINT";
-const char REALstr[]	= "REAL";
+const char BOOLstr[]		= "BOOL";
+const char BITstr[]		= "BOOL";
+const char SINTstr[]		= "SINT";
+const char INTstr[]		= "INT";
+const char DINTstr[]		= "DINT";
+const char USINTstr[]		= "USINT";
+const char UINTstr[]		= "UINT";
+const char UDINTstr[]		= "UDINT";
+const char REALstr[]		= "REAL";
+const char STRINGstr[]		= "STRING";
+
+const char devTypeStr[]		= "Device type";
+const char devNameStr[]		= "Device name";
+const char devHWVerStr[]	= "Hardware version";
+const char devSWVerStr[]	= "Software version";
+const char devIdentityStr[]	= "Identity";
+const char devVendorIDStr[]	= "Vendor";
+const char devProductCodeStr[]	= "Product code";
+const char devRevisionStr[]	= "Revision";
+const char devSerialNoStr[]	= "Serial number";
+const char devSMTypeStr[]	= "SyncManager type";
+const char numberOfEntriesStr[]	= "Number of entries";
+const char subIndex000Str[]	= "SubIndex 000";
+
+std::vector<char*> m_customStr;
 
 uint8_t getCoEDataType(const char* dt) {
 	if(0 == strcmp(dt,BOOLstr) || 0 == strcmp(dt,BITstr)) {
@@ -147,6 +163,7 @@ unsigned char crc8(unsigned char* ptr, unsigned char len)
 }
 
 bool verbose = false;
+bool very_verbose = false;
 bool writeobjectdict = false;
 bool writeconfig = true;
 bool nosii = false;
@@ -218,7 +235,7 @@ struct Mailbox {
 
 struct PdoEntry {
 	bool fixed = false;
-	const char* index = NULL;
+	uint32_t index = 0;
 	uint32_t subindex = 0;
 	uint16_t bitlen = 0;
 	const char* datatype = NULL;
@@ -230,7 +247,7 @@ struct Pdo {
 	bool mandatory = false;
 	int syncmanager = 0;
 	int syncunit = 0;
-	const char* index = NULL;
+	uint32_t index = 0;
 	const char* name = NULL;
 	std::list<PdoEntry*> entries;
 };
@@ -270,7 +287,7 @@ struct DataType {
 };
 
 struct Object {
-	const char* index = NULL;
+	uint32_t index = 0;
 	const char* name = NULL;
 	const char* type = NULL;
 	DataType* datatype = NULL;
@@ -331,6 +348,24 @@ void printUsage(const char* name) {
 	printf("\n");
 }
 
+uint32_t hexdecstr2uint32(const char* s) {
+	uint32_t r = 0;
+	if(s[0] == '#' && (s[1] == 'x' || s[1] == 'X')) {
+		char c[strlen(s)+1]; // Wooooo lord stringlengths and input sanitizing
+		strcpy(c,s);
+		c[0] = '0'; // Make it easy for sscanf
+		if(1 != sscanf(c,"%x",&r)) r = 0;
+	} else if (s[0] == 'x' || s[0] == 'X') {
+		char c[strlen(s)+2]; // Wooooo lord stringlengths and input sanitizing
+		strcpy(c+1,s);
+		c[0] = '0'; // Make it easy for sscanf
+		if(1 != sscanf(c,"%x",&r)) r = 0;
+	} else {
+		if(1 != sscanf(s,"%u",&r)) r = 0;
+	}
+	return r;
+}
+
 uint32_t EC_SII_HexToUint32(const char* s) {
 	char c[strlen(s)+1]; // Wooooo lord stringlengths and input sanitizing
 	strcpy(c,s);
@@ -354,7 +389,8 @@ std::string CNameify(const char* str, bool capitalize = false) {
 };
 
 void printObject (Object* o) {
-	printf("Obj: Index: 0x%.04X, Name: '%s'\n",(NULL != o->index ? EC_SII_HexToUint32(o->index) : 0),o->name);
+//	printf("Obj: Index: 0x%.04X, Name: '%s'\n",(NULL != o->index ? EC_SII_HexToUint32(o->index) : 0),o->name);
+	printf("Obj: Index: 0x%.04X, Name: '%s', DefaultData: '%s', BitSize: '%u'\n",o->index,o->name,o->defaultdata,o->bitsize);
 	for(Object* si : o->subitems) printObject(si);
 };
 
@@ -364,6 +400,7 @@ void printDataType (DataType* dt) {
 };
 
 void printDataTypeVerbose (DataType* dt) {
+	printf("-----------------:\n");
 	printf("DataType:\n");
 	printf("Name: '%s'\n",dt->name);
 	printf("Type: '%s'\n",dt->type);
@@ -389,6 +426,7 @@ void printDataTypeVerbose (DataType* dt) {
 		printf("SubItem:\n");
 		printDataTypeVerbose(si);
 	}
+	printf("-----------------:\n");
 };
 
 void parseXMLGroup(const tinyxml2::XMLElement* xmlgroup) {
@@ -503,8 +541,10 @@ void parseXMLPdo(const tinyxml2::XMLElement* xmlpdo, std::list<Pdo*>* pdolist) {
 		pdochild != 0; pdochild = pdochild->NextSiblingElement())
 	{
 		if(0 == strcmp(pdochild->Name(),"Index")) {
-			pdo->index = pdochild->GetText();
-			printf("Device/%s/Index: '%s'\n",xmlpdo->Name(),pdo->index);
+			//pdo->index = pdochild->GetText();
+			pdo->index = hexdecstr2uint32(pdochild->GetText());
+//			printf("Device/%s/Index: '%s'\n",xmlpdo->Name(),pdo->index);
+			printf("Device/%s/Index: '0x%.04X'\n",xmlpdo->Name(),pdo->index);
 		} else
 		if(0 == strcmp(pdochild->Name(),"Name")) {
 			pdo->name = pdochild->GetText();
@@ -520,8 +560,10 @@ void parseXMLPdo(const tinyxml2::XMLElement* xmlpdo, std::list<Pdo*>* pdolist) {
 					if(verbose) printf("Device/%s/Entry/Name: '%s'\n",xmlpdo->Name(),entry->name);
 				} else
 				if(0 == strcmp(entrychild->Name(),"Index")) {
-					entry->index = entrychild->GetText();
-					if(verbose) printf("Device/%s/Entry/Index: '%s'\n",xmlpdo->Name(),entry->index);
+					//entry->index = entrychild->GetText();
+					entry->index = hexdecstr2uint32(entrychild->GetText());
+//					if(verbose) printf("Device/%s/Entry/Index: '%s'\n",xmlpdo->Name(),entry->index);
+					if(verbose) printf("Device/%s/Entry/Index: '0x%.04X'\n",xmlpdo->Name(),entry->index);
 				} else
 				if(0 == strcmp(entrychild->Name(),"BitLen")) {
 					entry->bitlen = entrychild->IntText();
@@ -665,7 +707,8 @@ void parseXMLObject(const tinyxml2::XMLElement* xmlobject, Dictionary* dict, Obj
 		objchild != 0; objchild = objchild->NextSiblingElement())
 	{
 		if(0 == strcmp(objchild->Name(),"Index")) {
-			obj->index = objchild->GetText();
+//			obj->index = objchild->GetText();
+			obj->index = hexdecstr2uint32(objchild->GetText());
 		} else
 		if(0 == strcmp(objchild->Name(),"Name")) {
 			obj->name = objchild->GetText();
@@ -744,7 +787,8 @@ void parseXMLObject(const tinyxml2::XMLElement* xmlobject, Dictionary* dict, Obj
 		}
 	}
 	if(NULL != parent) {
-		if(NULL == obj->index) obj->index = parent->index;
+//		if(NULL == obj->index) obj->index = parent->index;
+		if(0 == obj->index) obj->index = parent->index;
 		if(NULL == obj->type) obj->type = parent->type;
 		if(NULL == obj->flags) obj->flags = parent->flags;
 		parent->subitems.push_back(obj);
@@ -1159,21 +1203,344 @@ int encodeSII(const std::string& file, std::string output = "") {
 		// ...
 		Device* dev = devices.front();
 		if(!devices.empty()) {
-			printf("Profile: %s\n",dev->profile ? "yes" : "no");
-			if(NULL != dev->profile) {
-				printf("Dictionary: %s\n",dev->profile->dictionary ? "yes" : "no");
-				if(NULL != dev->profile->dictionary) {
-					printf("Objects: %lu\n",dev->profile->dictionary->objects.size());
-					for(Object* o : dev->profile->dictionary->objects) {
-						//printObject(o);
+			// Create a boilerplate object dictionary if nothing exists and CoE is enabled
+			// For now we assume either everything or nothing is there...
+			// Later we should check the individual objects and check the needed ones
+			// are there.
+			if(writeobjectdict && (NULL == dev->profile || NULL == dev->profile->dictionary) && 
+				dev->mailbox && dev->mailbox->coe_sdoinfo)
+			{
+				printf("Creating minimal object dictionary...\n");
+
+				if(!dev->profile) dev->profile = new Profile;
+				Dictionary* dict = new Dictionary;
+				dev->profile->dictionary = dict;
+
+				// Create a rudimentary datatype collection
+				DataType* DT_UDINT = new DataType;
+				DT_UDINT->bitsize = 32;
+				DT_UDINT->name = UDINTstr;
+				dev->profile->dictionary->datatypes.push_back(DT_UDINT);
+
+				DataType* DT_UINT = new DataType;
+				DT_UINT->bitsize = 16;
+				DT_UINT->name = UINTstr;
+				dev->profile->dictionary->datatypes.push_back(DT_UINT);
+
+				DataType* DT_USINT = new DataType;
+				DT_USINT->bitsize = 8;
+				DT_USINT->name = USINTstr;
+				dev->profile->dictionary->datatypes.push_back(DT_USINT);
+
+				DataType* DT_DINT = new DataType;
+				DT_DINT->bitsize = 32;
+				DT_DINT->name = DINTstr;
+				dev->profile->dictionary->datatypes.push_back(DT_DINT);
+
+				DataType* DT_INT = new DataType;
+				DT_INT->bitsize = 16;
+				DT_INT->name = INTstr;
+				dev->profile->dictionary->datatypes.push_back(DT_INT);
+
+				DataType* DT_SINT = new DataType;
+				DT_SINT->bitsize = 8;
+				DT_SINT->name = USINTstr;
+				dev->profile->dictionary->datatypes.push_back(DT_SINT);
+
+/*
+				auto createStringDataType = [&dict=dev->profile->dictionary](const char* name) {
+					DataType* dt = new DataType;
+					size_t L = 32;
+					char s[L];
+					snprintf(s,L,"STRING(%u)",strlen(name));
+					char* dt_typename = new char[strlen(s)];
+					m_customStr.push_back(dt_typename);
+					dt->name = name;
+					dt->type = dt_typename;
+					dt->bitsize = strlen(name) << 3;
+					// TODO flags
+					dict->datatypes.push_back(dt);
+					return dt;
+				};*/
+
+				const char devtype[] = "00001389";
+
+				Object* x1000 = new Object;
+				x1000->index = 0x1000;
+				x1000->datatype = DT_UDINT;
+				x1000->name = devTypeStr;
+				x1000->defaultdata = devtype;
+				dict->objects.push_back(x1000);
+				printObject(x1000);
+
+				size_t L = 32;
+				char s[L];
+				snprintf(s,L,"STRING(%lu)",strlen(dev->name));
+				char* dt_typename = new char[sizeof(s)];
+				strcpy(dt_typename,s);
+				m_customStr.push_back(dt_typename);
+
+				Object* x1008 = new Object;
+				x1008->index = 0x1008;
+				x1008->type = dt_typename;
+				x1008->name = devNameStr;
+				x1008->defaultstring = dev->name;
+				dict->objects.push_back(x1008);
+
+/*				DataType* DT1018 = new DataType;
+				const char* dt1018_dtname = "DT1018";
+				DT1018->name = dt1018_dtname;
+
+				Object* x1018 = new Object;
+				x1018->index = 0x1018;
+				x1018->type = dt1018_dtname;
+				x1018->name = devNameStr;
+				x1018->defaultstring = dev->name;
+				dict->objects.push_back(x1008);*/
+
+				// RX/TXPDO mapping
+				for(auto pdoList : { dev->rxpdo, dev->txpdo }) {
+					for(Pdo* pdo : pdoList) {
+						Object* pdo_obj = new Object;
+						pdo_obj->index = pdo->index;
+						pdo_obj->name = pdo->name;
+						uint32_t rxsize_bytes = 0;
+
+						DataType* dt = new DataType;
+						snprintf(s,L,"DT%.04X",pdo->index);
+						dt_typename = new char[sizeof(s)];
+						strcpy(dt_typename,s);
+						m_customStr.push_back(dt_typename);
+						dt->name = dt_typename;
+
+						pdo_obj->datatype = dt;
+
+						if(pdo->entries.size() > 0) {
+							Object* numberOfEntries_obj = new Object;
+							numberOfEntries_obj->name = numberOfEntriesStr;
+							// Create the DataType subitem for the first subindex (USINT)
+							DataType* sdt = new DataType;
+							sdt->name = subIndex000Str;
+							sdt->type = DT_USINT->name;
+							sdt->bitsize = DT_USINT->bitsize;
+							sdt->bitoffset = 0;
+							sdt->subindex = 0;
+							dt->subitems.push_back(sdt);
+							numberOfEntries_obj->index = pdo->index;
+							numberOfEntries_obj->datatype = sdt;
+							dt->bitsize += numberOfEntries_obj->datatype->bitsize;
+							dt->bitsize += numberOfEntries_obj->datatype->bitsize; // FIXME padding
+
+							snprintf(s,L,"%.02X",(uint32_t)(pdo->entries.size() & 0xFF));
+							char* numberOfEntriesVal = new char[sizeof(s)];
+							strcpy(numberOfEntriesVal,s);
+							m_customStr.push_back(numberOfEntriesVal);
+							numberOfEntries_obj->defaultdata = numberOfEntriesVal;
+							pdo_obj->subitems.push_back(numberOfEntries_obj);
+
+							for(PdoEntry* e : pdo->entries) {
+								// Create the DataType subitem for current subindex
+								sdt = new DataType;
+								Object* pdoEntry_obj = new Object;
+								snprintf(s,L,"SubIndex %.03d",e->subindex);
+								char* entryName = new char[sizeof(s)];
+								strcpy(entryName,s);
+								m_customStr.push_back(entryName);
+								sdt->name = entryName;
+								sdt->subindex = e->subindex;
+								sdt->type = e->datatype;
+								// Set the offset of the "new" datatype subitem
+								sdt->bitoffset = dt->bitsize;
+								sdt->bitsize = e->bitlen;
+								// Increase the bitsize
+								dt->bitsize += e->bitlen;
+								// TODO Flags etc.
+								pdoEntry_obj->index = pdo->index;
+								pdoEntry_obj->name = entryName;
+								pdoEntry_obj->datatype = sdt;
+
+								snprintf(s,L,"%.04X%.02X%.02X",e->index,e->subindex,e->bitlen);
+								char* defaultData = new char[sizeof(s)];
+								strcpy(defaultData,s);
+								m_customStr.push_back(defaultData);
+								pdoEntry_obj->defaultdata = defaultData;
+
+								pdo_obj->subitems.push_back(pdoEntry_obj);
+								dt->subitems.push_back(sdt);
+							}
+						}
+						dict->datatypes.push_back(dt);
+						dict->objects.push_back(pdo_obj);
 					}
-					printf("DataTypes: %lu\n",dev->profile->dictionary->datatypes.size());
-					for(DataType* dt : dev->profile->dictionary->datatypes) {
-						//printDataTypeVerbose(dt);
+				}
+
+				auto createArrayDT = [&dict](uint16_t index, const int entries, DataType* entryDT) {
+					DataType* dtARR = new DataType;
+					size_t L = 32;
+					char s[L];
+					snprintf(s,L,"DT%.04XARR",index);
+					char* arrName = new char[sizeof(s)];
+					strcpy(arrName,s);
+					m_customStr.push_back(arrName);
+					dtARR->name = arrName;
+					dtARR->basetype = entryDT->name;
+					dtARR->bitsize = entries*(entryDT->bitsize);
+					dtARR->arrayinfo = new ArrayInfo;
+					dtARR->arrayinfo->elements = entries;
+					dtARR->arrayinfo->lowerbound = 1;
+
+					dict->datatypes.push_back(dtARR);
+
+					DataType* dt = new DataType;
+					snprintf(s,L,"DT%.04X",index);
+					char* dtName = new char[sizeof(s)];
+					strcpy(dtName,s);
+					m_customStr.push_back(dtName);
+					dt->name = dtName;
+					dt->bitsize = (entries*(entryDT->bitsize))+16;
+					dt->subitems.push_back(
+						new DataType {
+							.name = subIndex000Str,
+							.type = USINTstr,
+							.bitsize = 8,
+							.subindex = 0 });
+					dt->subitems.push_back(
+						new DataType {
+							.name = "Elements",
+							.type = arrName,
+							.bitsize = dtARR->bitsize,
+							.bitoffset = 16 });
+					dt->arrayinfo = dtARR->arrayinfo;
+					dict->datatypes.push_back(dt);
+					return dt;
+				};
+
+				// SyncManager types 0x1C00
+				DataType* DT1C00 = createArrayDT(0x1C00,dev->syncmanagers.size(),DT_USINT);
+
+				Object* x1C00 = new Object;
+				x1C00->index = 0x1C00;
+				x1C00->datatype = DT1C00;
+				x1C00->bitsize = DT1C00->bitsize;
+				x1C00->name = devSMTypeStr;
+
+				snprintf(s,L,"%.02lu",dev->syncmanagers.size());
+				char* x1C00entries = new char[sizeof(s)];
+				strcpy(x1C00entries,s);
+				m_customStr.push_back(x1C00entries);
+
+				x1C00->subitems.push_back(new Object {
+						.index = x1C00->index,
+						.name = subIndex000Str,
+						.datatype = DT_USINT,
+						.defaultdata = x1C00entries});
+
+				uint8_t smno = 0;
+				for(SyncManager* sm : dev->syncmanagers) {
+					Object* sm_obj = new Object;
+					sm_obj->index = x1C00->index;
+					sm_obj->datatype = DT_USINT;
+					snprintf(s,L,"SM%d type",smno);
+					char* objname = new char[sizeof(s)];
+					strcpy(objname,s);
+					m_customStr.push_back(objname);
+					sm_obj->name = objname;
+
+					if(0 == strcmp(sm->type,"MBoxOut")) {
+						snprintf(s,L,"%.02d",1);
+					} else if(0 == strcmp(sm->type,"MBoxIn")) {
+						snprintf(s,L,"%.02d",2);
+					} else if(0 == strcmp(sm->type,"Outputs")) {
+						snprintf(s,L,"%.02d",3);
+					} else if(0 == strcmp(sm->type,"Inputs")) {
+						snprintf(s,L,"%.02d",4);
+					}
+					char* val = new char[sizeof(s)];
+					strcpy(val,s);
+					m_customStr.push_back(val);
+					sm_obj->defaultdata = val;
+					sm_obj->bitsize = DT_USINT->bitsize;
+					sm_obj->bitoffset = (smno * DT_USINT->bitsize);
+					++smno;
+					x1C00->subitems.push_back(sm_obj);
+				}
+				dict->objects.push_back(x1C00);
+
+				// SyncManager mappings 0x1C10-0x1C20
+				std::vector<std::list<Pdo*> > syncManagerMappings = {{},{},{},{}};
+				for(auto pdoList : { dev->rxpdo, dev->txpdo }) {
+					for(Pdo* pdo : pdoList)
+						syncManagerMappings[pdo->syncmanager].push_back(pdo);
+				}
+				smno = 0;
+				for(auto pdoList : syncManagerMappings) {
+					Object* mappingObject = new Object;
+					mappingObject->index = 0x1C10 + smno;
+					DataType* DTmapping = createArrayDT(mappingObject->index,pdoList.size(),DT_UINT);
+					mappingObject->datatype = DTmapping;
+
+					snprintf(s,L,"SM%d mappings",smno);
+					char* objname = new char[sizeof(s)];
+					strcpy(objname,s);
+					m_customStr.push_back(objname);
+					mappingObject->name = objname;
+					mappingObject->bitsize = 16; // size + padding
+
+					snprintf(s,L,"%.02lu",pdoList.size());
+					char* entries = new char[sizeof(s)];
+					strcpy(entries,s);
+					m_customStr.push_back(entries);
+
+					mappingObject->subitems.push_back(new Object {
+							.index = mappingObject->index,
+							.name = subIndex000Str,
+							.datatype = DT_USINT,
+							.defaultdata = entries});
+
+					for(auto pdo : pdoList) {
+						Object* mappedObj = new Object;
+						mappedObj->index = mappingObject->index;
+						mappedObj->datatype = DT_UINT;
+						snprintf(s,L,"%.02X",pdo->index);
+						char* val = new char[sizeof(s)];
+						strcpy(val,s);
+						m_customStr.push_back(val);
+						mappedObj->defaultdata = val;
+						mappedObj->name = pdo->name != NULL ? pdo->name : "Mapped object";
+						mappedObj->bitoffset = mappingObject->bitsize;
+						mappingObject->bitsize += DT_UINT->bitsize;
+						mappedObj->bitsize = DT_UINT->bitsize;
+						mappingObject->subitems.push_back(mappedObj);
+					}
+
+					dict->objects.push_back(mappingObject);
+					++smno;
+				}
+
+				for(auto pdoList : { dev->rxpdo, dev->txpdo }) {
+					for(Pdo* pdo : pdoList) {
+						
 					}
 				}
 			}
-			printf("Distributed Clock (DC): %s\n",dev->dc ? "yes" : "no");
+
+			if(verbose) {
+				printf("Profile: %s\n",dev->profile ? "yes" : "no");
+				if(NULL != dev->profile) {
+					printf("Dictionary: %s\n",dev->profile->dictionary ? "yes" : "no");
+					if(NULL != dev->profile->dictionary) {
+						printf("Objects: %lu\n",dev->profile->dictionary->objects.size());
+						for(Object* o : dev->profile->dictionary->objects) {
+							printObject(o);
+						}
+						printf("DataTypes: %lu\n",dev->profile->dictionary->datatypes.size());
+						for(DataType* dt : dev->profile->dictionary->datatypes) {
+							printDataTypeVerbose(dt);
+						}
+					}
+				}
+				printf("Distributed Clock (DC): %s\n",dev->dc ? "yes" : "no");
+			}
 
 			// Write SII EEPROM file
 			if(!nosii) {
@@ -1462,7 +1829,8 @@ int encodeSII(const std::string& file, std::string output = "") {
 							*(p++) = txpdocatlen & 0xFF;
 							*(p++) = (txpdocatlen >> 8) & 0xFF;
 
-							uint16_t index = EC_SII_HexToUint32(pdo->index) & 0xFFFF; // HexDec
+							//uint16_t index = EC_SII_HexToUint32(pdo->index) & 0xFFFF; // HexDec
+							uint16_t index = pdo->index & 0xFFFF; // HexDec
 							*(p++) = index & 0xFF;
 							*(p++) = (index >> 8) & 0xFF;
 				
@@ -1479,7 +1847,8 @@ int encodeSII(const std::string& file, std::string output = "") {
 							*(p++) = (flags >> 8) & 0xFF;
 
 							for(PdoEntry* entry : pdo->entries) {
-								index = EC_SII_HexToUint32(entry->index) & 0xFFFF;
+//								index = EC_SII_HexToUint32(entry->index) & 0xFFFF;
+								index = entry->index & 0xFFFF;
 								*(p++) = index & 0xFF;
 								*(p++) = (index >> 8) & 0xFF;
 								*(p++) = entry->subindex & 0xFF;
@@ -1503,7 +1872,8 @@ int encodeSII(const std::string& file, std::string output = "") {
 							*(p++) = rxpdocatlen & 0xFF;
 							*(p++) = (rxpdocatlen >> 8) & 0xFF;
 
-							uint16_t index = EC_SII_HexToUint32(pdo->index) & 0xFFFF; // HexDec
+//							uint16_t index = EC_SII_HexToUint32(pdo->index) & 0xFFFF; // HexDec
+							uint16_t index = pdo->index & 0xFFFF; // HexDec
 							*(p++) = index & 0xFF;
 							*(p++) = (index >> 8) & 0xFF;
 							*(p++) = pdo->entries.size() & 0xFF;
@@ -1519,7 +1889,8 @@ int encodeSII(const std::string& file, std::string output = "") {
 							*(p++) = (flags >> 8) & 0xFF;
 
 							for(PdoEntry* entry : pdo->entries) {
-								index = EC_SII_HexToUint32(entry->index) & 0xFFFF;
+//								index = EC_SII_HexToUint32(entry->index) & 0xFFFF;
+								index = entry->index & 0xFFFF;
 								*(p++) = index & 0xFF;
 								*(p++) = (index >> 8) & 0xFF;
 								*(p++) = entry->subindex & 0xFF;
@@ -1594,7 +1965,7 @@ int encodeSII(const std::string& file, std::string output = "") {
 					*(p++) = 0xFF; // End
 					*(p++) = 0xFF;
 
-					if(verbose) {
+					if(very_verbose) {
 						printf("EEPROM contents:\n");
 						// Print EEPROM data
 						for(uint16_t i = 0; i < EC_SII_EEPROM_SIZE; i=i+2)
@@ -1722,15 +2093,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 				}
 			}
 
-			// Create a boilerplate object dictionary if nothing exists and CoE is enabled
-/*			if(writeobjectdict && (NULL == dev->profile || dev->profile->dictionary) && 
-				dev->mailbox && dev->mailbox->coe_sdoinfo)
-			{
-				if(!dev->profile) dev->profile = new Profile;
-				dev->profile->dictionary = new Dictionary;
-				Object* o = new Object;
-			}*/
-
 			// Write slave stack object dictionary
 			if(writeobjectdict && NULL != dev->profile && NULL != dev->profile->dictionary) {
 				std::ofstream typesout;
@@ -1770,7 +2132,8 @@ int encodeSII(const std::string& file, std::string output = "") {
 					};
 
 					for(Object* o : dev->profile->dictionary->objects) {
-						uint16_t index = EC_SII_HexToUint32(o->index);
+//						uint16_t index = EC_SII_HexToUint32(o->index);
+						uint16_t index = o->index & 0xFFFF;
 						if(index < 0x2000) continue;
 
 						if(!o->subitems.empty()) {
@@ -1848,7 +2211,8 @@ int encodeSII(const std::string& file, std::string output = "") {
 						    << std::setfill('0')
 						    << std::setw(4)
 						    << std::uppercase
-						    << EC_SII_HexToUint32(o->index);
+						    << (o->index & 0xFFFF);
+//						    << EC_SII_HexToUint32(o->index);
 						out << "[] = \"" << o->name << "\";\n";
 						// TODO handle several levels?
 						int subitem = 0;
@@ -1858,7 +2222,8 @@ int encodeSII(const std::string& file, std::string output = "") {
 							    << std::setfill('0')
 							    << std::setw(4)
 							    << std::uppercase
-							    << EC_SII_HexToUint32(si->index);
+							    << (si->index & 0xFFFF);
+							    //<< EC_SII_HexToUint32(si->index);
 							out << "_";
 							out << std::setfill('0')
 							    << std::setw(2)
@@ -1876,7 +2241,8 @@ int encodeSII(const std::string& file, std::string output = "") {
 							    << std::setfill('0')
 							    << std::setw(4)
 							    << std::uppercase
-							    << EC_SII_HexToUint32(o->index);
+							    << (o->index & 0xFFFF);
+//							    << EC_SII_HexToUint32(o->index);
 							out << "_00[] = \"";
 							if(NULL != o->defaultstring) {
 								out << o->defaultstring;
@@ -1907,14 +2273,16 @@ int encodeSII(const std::string& file, std::string output = "") {
 						    << subitem
 						    << ", ";
 
-						uint16_t index = EC_SII_HexToUint32(obj->index);
+//						uint16_t index = EC_SII_HexToUint32(obj->index);
+						uint16_t index = obj->index & 0xFFFF;
 
 						DataType* datatype = obj->datatype;
 						const char* type = datatype ? (datatype->type ? datatype->type : datatype->name) : obj->type;
 						const ObjectFlags* flags = obj->flags ? obj->flags : (datatype ? datatype->flags : NULL);
 						uint32_t bitsize = obj->bitsize ? obj->bitsize : (datatype ? datatype->bitsize : 0);
 						if(NULL == type) {
-							printf("\033[0;31mWARNING:\033[0m DataType of object '%s' subitem '%d' is \033[0;33mNULL\033[0m\n\n\n",obj->index,subitem);
+//							printf("\033[0;31mWARNING:\033[0m DataType of object '%s' subitem '%d' is \033[0;33mNULL\033[0m\n\n\n",obj->index,subitem);
+							printf("\033[0;31mWARNING:\033[0m DataType of object '0x%.04X' subitem '%u' is \033[0;33mNULL\033[0m\n\n\n",obj->index,subitem);
 						} else
 						if(0 == strncmp(type,"STRING",5)) {
 							out << "DTYPE_VISIBLE_STRING" << ", ";
@@ -2051,7 +2419,8 @@ int encodeSII(const std::string& file, std::string output = "") {
 						    << std::hex << std::setfill('0')
 						    << std::setw(4)
 						    << std::uppercase
-						    << EC_SII_HexToUint32(o->index);
+						    << (o->index & 0xFFFF);
+//						    << EC_SII_HexToUint32(o->index);
 						out << "[] = {\n";
 						if(o->subitems.empty()) {
 							writeObject(o, NULL, subitem, 0, dev->profile->dictionary);
@@ -2066,7 +2435,8 @@ int encodeSII(const std::string& file, std::string output = "") {
 
 					out << "const _objectlist SDOobjects[] = {\n";
 					for(Object* o : dev->profile->dictionary->objects) {
-						uint16_t index = EC_SII_HexToUint32(o->index);
+//						uint16_t index = EC_SII_HexToUint32(o->index);
+						uint16_t index = o->index & 0xFFFF;
 						out << "{ 0x"
 						    << std::hex
 						    << std::setfill('0')
@@ -2470,6 +2840,12 @@ int main(int argc, char* argv[])
 		{
 			printf("Verbose mode: ON\n");
 			verbose = true;
+		} else
+		if(0 == strcmp(argv[i],"-vv"))
+		{
+			printf("Very verbose mode: ON\n");
+			verbose = true;
+			very_verbose = true;
 		} else
 		if(0 == strcmp(argv[i],"--nosii") ||
 		   0 == strcmp(argv[i],"-n"))
