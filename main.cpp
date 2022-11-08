@@ -1247,22 +1247,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 				DT_SINT->name = USINTstr;
 				dev->profile->dictionary->datatypes.push_back(DT_SINT);
 
-/*
-				auto createStringDataType = [&dict=dev->profile->dictionary](const char* name) {
-					DataType* dt = new DataType;
-					size_t L = 32;
-					char s[L];
-					snprintf(s,L,"STRING(%u)",strlen(name));
-					char* dt_typename = new char[strlen(s)];
-					m_customStr.push_back(dt_typename);
-					dt->name = name;
-					dt->type = dt_typename;
-					dt->bitsize = strlen(name) << 3;
-					// TODO flags
-					dict->datatypes.push_back(dt);
-					return dt;
-				};*/
-
 				const char devtype[] = "00001389";
 
 				Object* x1000 = new Object;
@@ -1286,17 +1270,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 				x1008->name = devNameStr;
 				x1008->defaultstring = dev->name;
 				dict->objects.push_back(x1008);
-
-/*				DataType* DT1018 = new DataType;
-				const char* dt1018_dtname = "DT1018";
-				DT1018->name = dt1018_dtname;
-
-				Object* x1018 = new Object;
-				x1018->index = 0x1018;
-				x1018->type = dt1018_dtname;
-				x1018->name = devNameStr;
-				x1018->defaultstring = dev->name;
-				dict->objects.push_back(x1008);*/
 
 				// RX/TXPDO mapping
 				for(auto pdoList : { dev->rxpdo, dev->txpdo }) {
@@ -1519,7 +1492,47 @@ int encodeSII(const std::string& file, std::string output = "") {
 
 				for(auto pdoList : { dev->rxpdo, dev->txpdo }) {
 					for(Pdo* pdo : pdoList) {
-						
+						Object* obj = NULL;
+						for(PdoEntry* entry : pdo->entries) {
+							if(NULL == obj || obj->index != entry->index) {
+								if(NULL != obj) {
+									// bitsize, subindex000 and bitlength
+									dict->objects.push_back(obj);
+								}
+								obj = new Object;
+								obj->index = entry->index;
+								obj->name = entry->name;
+							}
+							snprintf(s,L,"%.02lu",pdo->entries.size());
+							char* entries = new char[sizeof(s)];
+							strcpy(entries,s);
+							m_customStr.push_back(entries);
+
+							obj->subitems.push_back(new Object {
+								.index = obj->index,
+								.name = subIndex000Str,
+								.datatype = DT_USINT,
+								.defaultdata = entries});
+
+							obj->bitsize = 16;
+							DataType* dt = NULL;
+							for(DataType* d : dict->datatypes) {
+								if(0 == strcmp(d->name,entry->datatype)) {
+									dt = d;
+									break;
+								}
+							}
+							if(NULL == dt) printf("\n\nWARNING: DataType is NULL!\n\n");
+							obj->subitems.push_back(new Object {
+								.index = entry->index,
+								.name = entry->name,
+								.datatype = dt,
+								.bitsize = dt->bitsize,
+								.bitoffset = obj->bitsize
+							});
+							obj->bitsize += dt->bitsize;
+						}
+						dict->objects.push_back(obj);
 					}
 				}
 			}
@@ -2158,11 +2171,13 @@ int encodeSII(const std::string& file, std::string output = "") {
 								typesout << " ";
 								typesout << CNameify(si->name);
 								typesout << ";";
-								typesout << " /* ";
-								typesout << si->index << ".";
+								typesout << " /* "; 
 								typesout << std::uppercase
 									<< std::hex
 									<< std::setfill('0')
+									<< std::setw(4)
+									<< si->index
+									<< "."
 									<< std::setw(2)
 									<< subitem;
 								typesout << "*/\n";
