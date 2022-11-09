@@ -167,6 +167,8 @@ bool very_verbose = false;
 bool writeobjectdict = false;
 bool writeconfig = true;
 bool nosii = false;
+bool encodepdo = false; // Put PDOs in SII EEPROM
+
 // Decide if input from XML should be treated as LE
 bool input_endianness_is_little = false;
 
@@ -345,6 +347,7 @@ void printUsage(const char* name) {
 	printf("\t --verbose/-v : Flood some more information to stdout when applicable\n");
 	printf("\t --nosii/-n : Don't generate SII EEPROM binary (only for !--decode)\n");
 	printf("\t --dictionary/-d : Generate object dictionary (default if --nosii and !--decode)\n");
+	printf("\t --encodepdo/-ep : Encode PDOs to SII EEPROM\n");
 	printf("\n");
 }
 
@@ -1255,7 +1258,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 				x1000->name = devTypeStr;
 				x1000->defaultdata = devtype;
 				dict->objects.push_back(x1000);
-				printObject(x1000);
 
 				size_t L = 32;
 				char s[L];
@@ -1490,7 +1492,7 @@ int encodeSII(const std::string& file, std::string output = "") {
 					++smno;
 				}
 
-				for(auto pdoList : { dev->rxpdo, dev->txpdo }) {
+				for(auto pdoList : { dev->txpdo, dev->rxpdo }) {
 					for(Pdo* pdo : pdoList) {
 						Object* obj = NULL;
 						for(PdoEntry* entry : pdo->entries) {
@@ -1832,7 +1834,7 @@ int encodeSII(const std::string& file, std::string output = "") {
 					}
 
 					// TXPDO category if needed
-					if(!dev->txpdo.empty())
+					if(encodepdo && !dev->txpdo.empty())
 					{
 						for(Pdo* pdo : dev->txpdo) {
 							*(p++) = EEPROMCategoryTXPDO & 0xFF;
@@ -1875,7 +1877,7 @@ int encodeSII(const std::string& file, std::string output = "") {
 					}
 
 					// RXPDO category if needed
-					if(!dev->rxpdo.empty())
+					if(encodepdo && !dev->rxpdo.empty())
 					{
 						for(Pdo* pdo : dev->rxpdo) {
 							*(p++) = EEPROMCategoryRXPDO & 0xFF;
@@ -2867,6 +2869,12 @@ int main(int argc, char* argv[])
 		{
 			printf("Not generating SII EEPROM binary\n");
 			nosii = true;
+		} else
+		if(0 == strcmp(argv[i],"--encodepdo") ||
+		   0 == strcmp(argv[i],"-ep"))
+		{
+			printf("Not generating SII EEPROM binary\n");
+			encodepdo = true;
 		} else
 		if(0 == strcmp(argv[i],"--bigendian") ||
 		   0 == strcmp(argv[i],"-be"))
