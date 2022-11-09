@@ -22,5 +22,7 @@ message (STATUS "Building for ${CMAKE_SYSTEM_NAME}")
 add_executable(esctool
   tinyxml2/tinyxml2.cpp
   tinyxml2/tinyxml2.h
+  esctoolhelpers.cpp
+  siiencode.cpp
   main.cpp
   )
