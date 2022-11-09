@@ -1,4 +1,5 @@
-#include "siiencode.h"
+#include "sii.h"
+
 #include <stdio.h>
 #include <sys/mman.h>
 #include <stdlib.h>

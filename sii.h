@@ -1,5 +1,5 @@
-#ifndef SIIENCODE_H
-#define SIIENCODE_H
+#ifndef SII_H
+#define SII_H
 #include <string>
 #include "esctooldefs.h"
 
@@ -9,4 +9,4 @@ namespace SII {
 	void decodeEEPROMBinary(const std::string& file, const bool verbose = false);
 };
 
-#endif /* SIIENCODE_H */
+#endif /* SII_H */

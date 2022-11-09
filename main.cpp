@@ -35,7 +35,7 @@
 #include "esidefs.h"
 #include "esctooldefs.h"
 #include "esctoolhelpers.h"
-#include "siiencode.h"
+#include "sii.h"
 #include "soesconfigwriter.h"
 
 std::vector<char*> m_customStr;
@@ -61,7 +61,7 @@ void printUsage(const char* name) {
 	printf("\t --decode : Decode and print a binary SII file\n");
 	printf("\t --verbose/-v : Flood some more information to stdout when applicable\n");
 	printf("\t --nosii/-n : Don't generate SII EEPROM binary (only for !--decode)\n");
-	printf("\t --dictionary/-d : Generate object dictionary (default if --nosii and !--decode)\n");
+	printf("\t --dictionary/-d : Generate SSC object dictionary (default if --nosii and !--decode)\n");
 	printf("\t --encodepdo/-ep : Encode PDOs to SII EEPROM\n");
 	printf("\n");
 }

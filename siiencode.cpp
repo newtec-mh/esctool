@@ -1,11 +1,11 @@
-#include "esidefs.h"
+#include "sii.h"
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
 #include <sstream>
 #include <fstream>
+#include "esidefs.h"
 #include "esctooldefs.h"
-#include "siiencode.h"
 #include "esctoolhelpers.h"
 
 uint32_t EC_SII_EEPROM_SIZE			(1024);
