@@ -3,9 +3,10 @@
 #include <string>
 #include "esctooldefs.h"
 
-namespace SIIEncode {
-	void encodeSII(uint32_t vendor_id, Device* dev, bool encodepdo, const std::string& file,
+namespace SII {
+	void encodeEEPROMBinary(uint32_t vendor_id, Device* dev, bool encodepdo, const std::string& file,
 		const std::string& output, const bool verbose = false);
+	void decodeEEPROMBinary(const std::string& file, const bool verbose = false);
 };
 
 #endif /* SIIENCODE_H */

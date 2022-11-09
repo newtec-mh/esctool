@@ -10,7 +10,7 @@
 
 uint32_t EC_SII_EEPROM_SIZE			(1024);
 
-void SIIEncode::encodeSII(uint32_t vendor_id, Device* dev, const bool encodepdo, 
+void SII::encodeEEPROMBinary(uint32_t vendor_id, Device* dev, const bool encodepdo, 
 	const std::string& file, const std::string& output, const bool verbose)
 {
 	if(EC_SII_EEPROM_SIZE < dev->eepromsize)

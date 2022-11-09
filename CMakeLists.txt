@@ -23,6 +23,8 @@ add_executable(esctool
   tinyxml2/tinyxml2.cpp
   tinyxml2/tinyxml2.h
   esctoolhelpers.cpp
+  soesconfigwriter.cpp
+  siidecode.cpp
   siiencode.cpp
   main.cpp
   )
