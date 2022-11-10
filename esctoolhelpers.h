@@ -32,4 +32,7 @@ uint8_t getCoEDataType(const char* dt);
 const char* getCategoryString(const uint16_t category);
 unsigned char crc8(unsigned char* ptr, unsigned char len);
 
+uint32_t hexdecstr2uint32(const char* s);
+uint32_t EC_SII_HexToUint32(const char* s);
+
 #endif /* ESCTOOLHELPERS_H */

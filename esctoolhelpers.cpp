@@ -1,4 +1,5 @@
 #include "esctoolhelpers.h"
+#include <cstdio>
 
 uint8_t getCoEDataType(const char* dt) {
 	if(0 == strcmp(dt,BOOLstr) || 0 == strcmp(dt,BITstr)) {
@@ -59,3 +60,32 @@ unsigned char crc8(unsigned char* ptr, unsigned char len)
 	}
 	return (crc);
 };
+
+uint32_t hexdecstr2uint32(const char* s) {
+	uint32_t r = 0;
+	if(s[0] == '#' && (s[1] == 'x' || s[1] == 'X')) {
+		char c[strlen(s)+1]; // Wooooo lord stringlengths and input sanitizing
+		strcpy(c,s);
+		c[0] = '0'; // Make it easy for sscanf
+		if(1 != sscanf(c,"%x",&r)) r = 0;
+	} else if (s[0] == 'x' || s[0] == 'X') {
+		char c[strlen(s)+2]; // Wooooo lord stringlengths and input sanitizing
+		strcpy(c+1,s);
+		c[0] = '0'; // Make it easy for sscanf
+		if(1 != sscanf(c,"%x",&r)) r = 0;
+	} else {
+		if(1 != sscanf(s,"%u",&r)) r = 0;
+	}
+	return r;
+}
+
+uint32_t EC_SII_HexToUint32(const char* s) {
+	char c[strlen(s)+1]; // Wooooo lord stringlengths and input sanitizing
+	strcpy(c,s);
+	uint32_t r = 0;
+	if(c[0] == '#' && (c[1] == 'x' || c[1] == 'X')) {
+		c[0] = '0'; // Make it easy for sscanf
+		if(1 != sscanf(c,"%x",&r)) r = 0;
+	}
+	return r;
+}
