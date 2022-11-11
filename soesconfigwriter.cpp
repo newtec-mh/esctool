@@ -171,7 +171,6 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 			};
 
 			for(Object* o : dev->profile->dictionary->objects) {
-	//						uint16_t index = EC_SII_HexToUint32(o->index);
 				uint16_t index = o->index & 0xFFFF;
 				if(index < 0x2000) continue;
 
@@ -253,7 +252,6 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 					<< std::setw(4)
 					<< std::uppercase
 					<< (o->index & 0xFFFF);
-	//						    << EC_SII_HexToUint32(o->index);
 				out << "[] = \"" << o->name << "\";\n";
 				// TODO handle several levels?
 				int subitem = 0;
@@ -264,7 +262,6 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 						<< std::setw(4)
 						<< std::uppercase
 						<< (si->index & 0xFFFF);
-						//<< EC_SII_HexToUint32(si->index);
 					out << "_";
 					out << std::setfill('0')
 						<< std::setw(2)
@@ -283,7 +280,6 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 						<< std::setw(4)
 						<< std::uppercase
 						<< (o->index & 0xFFFF);
-	//							    << EC_SII_HexToUint32(o->index);
 					out << "_00[] = \"";
 					if(NULL != o->defaultstring) {
 						out << o->defaultstring;
@@ -313,8 +309,6 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 					<< std::setw(2)
 					<< subitem
 					<< ", ";
-
-	//						uint16_t index = EC_SII_HexToUint32(obj->index);
 				uint16_t index = obj->index & 0xFFFF;
 
 				DataType* datatype = obj->datatype;
@@ -322,7 +316,6 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 				const ObjectFlags* flags = obj->flags ? obj->flags : (datatype ? datatype->flags : NULL);
 				uint32_t bitsize = obj->bitsize ? obj->bitsize : (datatype ? datatype->bitsize : 0);
 				if(NULL == type) {
-	//							printf("\033[0;31mWARNING:\033[0m DataType of object '%s' subitem '%d' is \033[0;33mNULL\033[0m\n\n\n",obj->index,subitem);
 					printf("\033[0;31mWARNING:\033[0m DataType of object '0x%.04X' subitem '%u' is \033[0;33mNULL\033[0m\n\n\n",obj->index,subitem);
 				} else
 				if(0 == strncmp(type,"STRING",5)) {
@@ -461,7 +454,6 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 					<< std::setw(4)
 					<< std::uppercase
 					<< (o->index & 0xFFFF);
-	//						    << EC_SII_HexToUint32(o->index);
 				out << "[] = {\n";
 				if(o->subitems.empty()) {
 					writeObject(o, NULL, subitem, 0, dev->profile->dictionary);
@@ -476,7 +468,6 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 
 			out << "const _objectlist SDOobjects[] = {\n";
 			for(Object* o : dev->profile->dictionary->objects) {
-	//						uint16_t index = EC_SII_HexToUint32(o->index);
 				uint16_t index = o->index & 0xFFFF;
 				out << "{ 0x"
 					<< std::hex

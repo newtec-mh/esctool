@@ -151,9 +151,7 @@ void ESIXML::parseXMLPdo(const tinyxml2::XMLElement* xmlpdo, std::list<Pdo*>* pd
 		pdochild != 0; pdochild = pdochild->NextSiblingElement())
 	{
 		if(0 == strcmp(pdochild->Name(),"Index")) {
-			//pdo->index = pdochild->GetText();
 			pdo->index = hexdecstr2uint32(pdochild->GetText());
-//			printf("Device/%s/Index: '%s'\n",xmlpdo->Name(),pdo->index);
 			printf("Device/%s/Index: '0x%.04X'\n",xmlpdo->Name(),pdo->index);
 		} else
 		if(0 == strcmp(pdochild->Name(),"Name")) {
@@ -170,9 +168,7 @@ void ESIXML::parseXMLPdo(const tinyxml2::XMLElement* xmlpdo, std::list<Pdo*>* pd
 					if(verbose) printf("Device/%s/Entry/Name: '%s'\n",xmlpdo->Name(),entry->name);
 				} else
 				if(0 == strcmp(entrychild->Name(),"Index")) {
-					//entry->index = entrychild->GetText();
 					entry->index = hexdecstr2uint32(entrychild->GetText());
-//					if(verbose) printf("Device/%s/Entry/Index: '%s'\n",xmlpdo->Name(),entry->index);
 					if(verbose) printf("Device/%s/Entry/Index: '0x%.04X'\n",xmlpdo->Name(),entry->index);
 				} else
 				if(0 == strcmp(entrychild->Name(),"BitLen")) {
@@ -317,7 +313,6 @@ void ESIXML::parseXMLObject(const tinyxml2::XMLElement* xmlobject, Dictionary* d
 		objchild != 0; objchild = objchild->NextSiblingElement())
 	{
 		if(0 == strcmp(objchild->Name(),"Index")) {
-//			obj->index = objchild->GetText();
 			obj->index = hexdecstr2uint32(objchild->GetText());
 		} else
 		if(0 == strcmp(objchild->Name(),"Name")) {
@@ -397,7 +392,6 @@ void ESIXML::parseXMLObject(const tinyxml2::XMLElement* xmlobject, Dictionary* d
 		}
 	}
 	if(NULL != parent) {
-//		if(NULL == obj->index) obj->index = parent->index;
 		if(0 == obj->index) obj->index = parent->index;
 		if(NULL == obj->type) obj->type = parent->type;
 		if(NULL == obj->flags) obj->flags = parent->flags;

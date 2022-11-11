@@ -159,38 +159,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 			DataType* DT_INT = findDT(INTstr,16);
 			DataType* DT_SINT = findDT(SINTstr,8);
 
-/*
-			// Create a rudimentary datatype collection
-			DataType* DT_UDINT = new DataType;
-			DT_UDINT->bitsize = 32;
-			DT_UDINT->name = UDINTstr;
-			dev->profile->dictionary->datatypes.push_back(DT_UDINT);
-
-			DataType* DT_UINT = new DataType;
-			DT_UINT->bitsize = 16;
-			DT_UINT->name = UINTstr;
-			dev->profile->dictionary->datatypes.push_back(DT_UINT);
-
-			DataType* DT_USINT = new DataType;
-			DT_USINT->bitsize = 8;
-			DT_USINT->name = USINTstr;
-			dev->profile->dictionary->datatypes.push_back(DT_USINT);
-
-			DataType* DT_DINT = new DataType;
-			DT_DINT->bitsize = 32;
-			DT_DINT->name = DINTstr;
-			dev->profile->dictionary->datatypes.push_back(DT_DINT);
-
-			DataType* DT_INT = new DataType;
-			DT_INT->bitsize = 16;
-			DT_INT->name = INTstr;
-			dev->profile->dictionary->datatypes.push_back(DT_INT);
-
-			DataType* DT_SINT = new DataType;
-			DT_SINT->bitsize = 8;
-			DT_SINT->name = USINTstr;
-			dev->profile->dictionary->datatypes.push_back(DT_SINT);*/
-
 			size_t L = 32;
 			char s[L];
 
@@ -224,19 +192,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 				});
 			}
 
-//			Object* x1000 = new Object;
-//			x1000->index = 0x1000;
-//			x1000->datatype = DT_UDINT;
-//			x1000->name = devTypeStr;
-//			x1000->defaultdata = devtype;
-//			dict->objects.push_back(x1000);
-
-//			snprintf(s,L,"STRING(%lu)",strlen(dev->name));
-//			char* dt_typename = createStr();
-/*			char* dt_typename = new char[sizeof(s)];
-			strcpy(dt_typename,s);
-			m_customStr.push_back(dt_typename);*/
-
 			if(!hasObject(0x1008)) {
 				snprintf(s,L,"STRING(%lu)",strlen(dev->name));
 				char* dt_typename = createStr();
@@ -248,13 +203,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 					.defaultstring = dev->name
 				});
 			}
-
-//			Object* x1008 = new Object;
-//			x1008->index = 0x1008;
-//			x1008->type = dt_typename;
-//			x1008->name = devNameStr;
-//			x1008->defaultstring = dev->name;
-//			dict->objects.push_back(x1008);
 
 			// RX/TXPDO mapping
 			for(auto pdoList : { dev->rxpdo, dev->txpdo }) {
@@ -268,9 +216,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 					DataType* dt = new DataType;
 					snprintf(s,L,"DT%.04X",pdo->index);
 					dt_typename = createStr();
-//					dt_typename = new char[sizeof(s)];
-//					strcpy(dt_typename,s);
-//					m_customStr.push_back(dt_typename);
 					dt->name = dt_typename;
 
 					pdo_obj->datatype = dt;
@@ -294,9 +239,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 
 						snprintf(s,L,"%.02X",(uint32_t)(pdo->entries.size() & 0xFF));
 						char* numberOfEntriesVal = dt_typename = createStr();
-//						char* numberOfEntriesVal = new char[sizeof(s)];
-//						strcpy(numberOfEntriesVal,s);
-//						m_customStr.push_back(numberOfEntriesVal);
 						numberOfEntries_obj->defaultdata = numberOfEntriesVal;
 						pdo_obj->subitems.push_back(numberOfEntries_obj);
 
@@ -306,9 +248,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 							Object* pdoEntry_obj = new Object;
 							snprintf(s,L,"SubIndex %.03d",e->subindex);
 							char* entryName = createStr();
-//							char* entryName = new char[sizeof(s)];
-//							strcpy(entryName,s);
-//							m_customStr.push_back(entryName);
 							sdt->name = entryName;
 							sdt->subindex = e->subindex;
 							sdt->type = e->datatype;
@@ -324,9 +263,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 
 							snprintf(s,L,"%.04X%.02X%.02X",e->index,e->subindex,e->bitlen);
 							char* defaultData = createStr();
-//							char* defaultData = new char[sizeof(s)];
-//							strcpy(defaultData,s);
-//							m_customStr.push_back(defaultData);
 							pdoEntry_obj->defaultdata = defaultData;
 
 							pdo_obj->subitems.push_back(pdoEntry_obj);
@@ -344,9 +280,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 				char s[L];
 				snprintf(s,L,"DT%.04XARR",index);
 				char* arrName = createStr();
-//				char* arrName = new char[sizeof(s)];
-//				strcpy(arrName,s);
-//				m_customStr.push_back(arrName);
 				dtARR->name = arrName;
 				dtARR->basetype = entryDT->name;
 				dtARR->bitsize = entries*(entryDT->bitsize);
@@ -359,9 +292,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 				DataType* dt = new DataType;
 				snprintf(s,L,"DT%.04X",index);
 				char* dtName = createStr();
-//				char* dtName = new char[sizeof(s)];
-//				strcpy(dtName,s);
-//				m_customStr.push_back(dtName);
 				dt->name = dtName;
 				dt->bitsize = (entries*(entryDT->bitsize))+16;
 				dt->subitems.push_back(
@@ -393,9 +323,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 
 				snprintf(s,L,"%.02lu",dev->syncmanagers.size());
 				char* x1C00entries = createStr();
-	//			char* x1C00entries = new char[sizeof(s)];
-	//			strcpy(x1C00entries,s);
-	//			m_customStr.push_back(x1C00entries);
 
 				x1C00->subitems.push_back(new Object {
 						.index = x1C00->index,
@@ -410,9 +337,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 					sm_obj->datatype = DT_USINT;
 					snprintf(s,L,"SM%d type",smno);
 					char* objname = createStr();
-	//				char* objname = new char[sizeof(s)];
-	//				strcpy(objname,s);
-	//				m_customStr.push_back(objname);
 					sm_obj->name = objname;
 
 					if(0 == strcmp(sm->type,"MBoxOut")) {
@@ -425,9 +349,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 						snprintf(s,L,"%.02d",4);
 					}
 					char* val = createStr();
-	//				char* val = new char[sizeof(s)];
-	//				strcpy(val,s);
-	//				m_customStr.push_back(val);
 					sm_obj->defaultdata = val;
 					sm_obj->bitsize = DT_USINT->bitsize;
 					sm_obj->bitoffset = (smno * DT_USINT->bitsize);
@@ -452,9 +373,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 
 				snprintf(s,L,"SM%d mappings",smno);
 				char* objname = createStr();
-//				char* objname = new char[sizeof(s)];
-//				strcpy(objname,s);
-//				m_customStr.push_back(objname);
 				mappingObject->name = objname;
 				mappingObject->bitsize = 16; // size + padding
 
@@ -475,9 +393,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 					mappedObj->datatype = DT_UINT;
 					snprintf(s,L,"%.02X",pdo->index);
 					char* val = createStr();
-//					char* val = new char[sizeof(s)];
-//					strcpy(val,s);
-//					m_customStr.push_back(val);
 					mappedObj->defaultdata = val;
 					mappedObj->name = pdo->name != NULL ? pdo->name : "Mapped object";
 					mappedObj->bitoffset = mappingObject->bitsize;
@@ -507,9 +422,6 @@ int encodeSII(const std::string& file, std::string output = "") {
 						}
 						snprintf(s,L,"%.02lu",pdo->entries.size());
 						char* entries = createStr();
-//						char* entries = new char[sizeof(s)];
-//						strcpy(entries,s);
-//						m_customStr.push_back(entries);
 
 						obj->subitems.push_back(new Object {
 							.index = obj->index,
