@@ -291,6 +291,10 @@ void SII::encodeEEPROMBinary(uint32_t vendor_id, Device* dev, const bool encodep
 			p += smpadding;
 		}
 
+		if(encodepdo && (dev->mailbox && !dev->mailbox->coe_sdoinfo)) {
+			// FMMU_EX
+		}
+
 		// TXPDO category if needed
 		if(encodepdo && !dev->txpdo.empty())
 		{
