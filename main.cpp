@@ -377,9 +377,7 @@ int encodeSII(const std::string& file, std::string output = "") {
 				mappingObject->bitsize = 16; // size + padding
 
 				snprintf(s,L,"%.02lu",pdoList.size());
-				char* entries = new char[sizeof(s)];
-				strcpy(entries,s);
-				m_customStr.push_back(entries);
+				char* entries = createStr();
 
 				mappingObject->subitems.push_back(new Object {
 						.index = mappingObject->index,
@@ -414,22 +412,23 @@ int encodeSII(const std::string& file, std::string output = "") {
 						if(NULL == obj || obj->index != entry->index) {
 							if(NULL != obj) {
 								// bitsize, subindex000 and bitlength
+								snprintf(s,L,"%.02lu",obj->subitems.size());
+								char* entries = createStr();
+
+								obj->subitems.push_front(new Object {
+									.index = obj->index,
+									.name = subIndex000Str,
+									.datatype = DT_USINT,
+									.defaultdata = entries});
+
 								dict->objects.push_back(obj);
 							}
 							obj = new Object;
 							obj->index = entry->index;
 							obj->name = entry->name;
+							obj->bitsize = 16; // SubIndex00 + padding
 						}
-						snprintf(s,L,"%.02lu",pdo->entries.size());
-						char* entries = createStr();
 
-						obj->subitems.push_back(new Object {
-							.index = obj->index,
-							.name = subIndex000Str,
-							.datatype = DT_USINT,
-							.defaultdata = entries});
-
-						obj->bitsize = 16;
 						DataType* dt = NULL;
 						for(DataType* d : dict->datatypes) {
 							if(0 == strcmp(d->name,entry->datatype)) {
@@ -449,6 +448,15 @@ int encodeSII(const std::string& file, std::string output = "") {
 							obj->bitsize += dt->bitsize;
 						}
 					}
+					snprintf(s,L,"%.02lu",obj->subitems.size());
+					char* entries = createStr();
+
+					obj->subitems.push_front(new Object {
+						.index = obj->index,
+						.name = subIndex000Str,
+						.datatype = DT_USINT,
+						.defaultdata = entries});
+
 					dict->objects.push_back(obj);
 				}
 			}
