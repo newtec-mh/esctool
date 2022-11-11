@@ -403,11 +403,13 @@ int encodeSII(const std::string& file, std::string output = "") {
 				++smno;
 			}
 
+			// Generate Objects from PDOs
 			for(auto pdoList : { dev->txpdo, dev->rxpdo }) {
 				for(Pdo* pdo : pdoList) {
 					Object* obj = NULL;
 					printf("PDO Index: 0x%.04X has %lu entries\n",pdo->index,pdo->entries.size());
 					for(PdoEntry* entry : pdo->entries) {
+						if(hasObject(entry->index)) continue;
 						printf("Entry: '%s', index: 0x%.04X, subindex: %u, datatype: '%s'\n",entry->name,entry->index,entry->subindex,entry->datatype);
 						if(NULL == obj || obj->index != entry->index) {
 							if(NULL != obj) {
