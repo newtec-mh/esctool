@@ -538,6 +538,22 @@ void ESIXML::parseXMLDataType(const tinyxml2::XMLElement* xmldatatype, Dictionar
 		if(NULL == datatype->flags) datatype->flags = parent->flags;
 		parent->subitems.push_back(datatype);
 	} else {
+		if(datatype->subitems.empty()) {
+			uint32_t bitsize = 0;
+			int siNo = 0;
+			for(DataType* dt : datatype->subitems) {
+				if(siNo == 0) {
+					bitsize += dt->bitsize;
+					bitsize += 8; // Padding
+				} else {
+					bitsize += dt->bitsize;
+				}
+				++siNo;
+			}
+			if(datatype->bitsize != bitsize) {
+				printf("WARNING: Bitsize of datatype '%s' seems off (calculated '%d' vs. parsed '%d'\n)",datatype->name,bitsize,datatype->bitsize);
+			}
+		}
 		dict->datatypes.push_back(datatype);
 	}
 }
@@ -782,13 +798,15 @@ void ESIXML::parseXMLVendor(const tinyxml2::XMLElement* xmlvendor) {
 
 void ESIXML::parseXMLElement(const tinyxml2::XMLElement* element, void* data) {
 	if(NULL == element) return;
-//	printf("Element name: '%s'\n",element->Name());
-//	if(element->GetText()) printf("Element text: '%s'\n",element->GetText());
+/*
+	printf("Element name: '%s'\n",element->Name());
+	if(element->GetText()) printf("Element text: '%s'\n",element->GetText());
 	for (const tinyxml2::XMLAttribute* attr = element->FirstAttribute();
 		attr != 0; attr = attr->Next())
 	{
-//		printf("Attribute: '%s' = '%s'\n",attr->Name(),attr->Value());
+		printf("Attribute: '%s' = '%s'\n",attr->Name(),attr->Value());
 	}
+*/
 	for (const tinyxml2::XMLElement* child = element->FirstChildElement();
 		child != 0; child = child->NextSiblingElement())
 	{
