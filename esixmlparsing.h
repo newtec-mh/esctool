@@ -6,7 +6,7 @@
 
 class ESIXML {
 public:
-	ESIXML(const bool v);
+	ESIXML(const int verbosity = 0);
 	virtual ~ESIXML();
 	void parse(const std::string& file);
 	std::list<Device*>& getDevices(void);
@@ -14,6 +14,7 @@ public:
 	const char* getVendorName(void) const;
 private:
 	bool verbose;
+	bool very_verbose;
 	uint32_t vendor_id;
 	const char* vendor_name;
 	std::list<Group*> groups;

@@ -5,6 +5,7 @@
 #include <iomanip>
 #include "esctoolhelpers.h"
 #include "esctool.h"
+#include "esctooldefs.h"
 
 #define SOES_DEFAULT_BUFFER_PREALLOC_FACTOR 3
 std::string objectdictfile	= "objectlist.c";
@@ -77,6 +78,18 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 			}
 		}
 
+		auto calculatePDOSize = [] (std::list<Pdo*>& pdoList, const int syncmanager) {
+			uint16_t pdoSize = 0;
+			for(Pdo* pdo : pdoList) {
+				if(syncmanager == pdo->syncmanager) {
+					for(PdoEntry* entry : pdo->entries) {
+						pdoSize += entry->bitlen;
+					}
+				}
+			}
+			return (pdoSize & 0xF ? 1 : 0) + (pdoSize >> 3); // Divide bitsize by 8 + 1 for remainder
+		};
+
 		for(SyncManager* sm : dev->syncmanagers) {
 			if(0 == strcmp(sm->type,"MBoxOut")) {
 				configout << "#define MBX0_sma         " << "0x" << std::hex << sm->startaddress << "\n";
@@ -103,6 +116,13 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 				configout << "\n";
 			} else
 			if(0 == strcmp(sm->type,"Outputs")) { // TODO verify that the actual assigned SyncManager *is* 2
+				uint16_t calculatedSize = calculatePDOSize(dev->rxpdo,2);
+				if(0 == sm->defaultsize) {
+					printf("\033[0;32mCalculated size of RXPDO\033[0m: %d bytes\n",calculatedSize);
+					sm->defaultsize = calculatedSize;
+				} else if(sm->defaultsize != calculatedSize) {
+					printf("\033[0;31mWARNING\033[0m: Calculated PDO output size %d does not match decoded size %d\n",calculatedSize,sm->defaultsize);
+				}
 				configout << "#define SM2_sma          " << "0x" << std::hex << sm->startaddress << "\n";
 				configout << "#define SM2_smc          " << "0x" << std::hex << (uint32_t) sm->controlbyte << "\n";
 				configout << "#define SM2_act          " << (sm->enable ? 1 : 0) << "\n";
@@ -110,6 +130,13 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 				configout << "\n";
 			} else
 			if(0 == strcmp(sm->type,"Inputs")) { // TODO verify that the actual assigned SyncManager *is* 3
+				uint16_t calculatedSize = calculatePDOSize(dev->txpdo,3);
+				if(0 == sm->defaultsize) {
+					sm->defaultsize = calculatedSize;
+					printf("\033[0;32mCalculated size of TXPDO\033[0m: %d bytes\n",calculatedSize);
+				} else if(sm->defaultsize != calculatedSize) {
+					printf("\033[0;31mWARNING\033[0m: Calculated PDO output size %d does not match decoded size %d\n",calculatedSize,sm->defaultsize);
+				}
 				configout << "#define SM3_sma          " << "0x" << std::hex << sm->startaddress << "\n";
 				configout << "#define SM3_smc          " << "0x" << std::hex << (uint32_t) sm->controlbyte << "\n";
 				configout << "#define SM3_act          " << (sm->enable ? 1 : 0) << "\n";
@@ -182,7 +209,6 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 							++subitem;
 							continue;
 						}
-
 						const char* type = si->datatype ? 
 							(si->datatype->type ? si->datatype->type :
 								si->datatype->name) :

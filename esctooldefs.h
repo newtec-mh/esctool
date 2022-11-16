@@ -37,8 +37,8 @@ struct SyncManager {
 
 struct FMMU {
 	const char* type = NULL;
-	int syncmanager = -1;
-	int syncunit = -1;
+	int32_t syncmanager = -1;
+	int32_t syncunit = -1;
 };
 
 struct Mailbox {

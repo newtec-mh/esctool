@@ -2,7 +2,10 @@
 #include "esixmlparsing.h"
 #include "esctoolhelpers.h"
 
-ESIXML::ESIXML(const bool v) : verbose(v), vendor_id(0x0), vendor_name(NULL) {}
+ESIXML::ESIXML(const int verbosity) :
+	verbose(verbosity != 0), very_verbose(verbosity & 0x2),
+	vendor_id(0x0), vendor_name(NULL) {}
+
 ESIXML::~ESIXML() {};
 
 std::list<Device*>& ESIXML::getDevices(void) { return devices; } ;
@@ -22,10 +25,10 @@ void ESIXML::parse(const std::string& file) {
 		}
 		parseXMLElement(root);
 		printf("ESIXML: Parsed '%lu' device(s) from vendor 0x%.04X:'%s'\n",devices.size(),vendor_id,vendor_name);
-		if(verbose) {
-			int devno = 1;
-			for(Device* dev : devices) {
-				printf("Device %.0d: '%s', Product code: '0x%.08X', %lu TXPDO(s), %lu RXPDO(s)\n",devno++,dev->name,dev->product_code,dev->txpdo.size(),dev->rxpdo.size());
+		int devno = 1;
+		for(Device* dev : devices) {
+			printf("Device %.0d: '%s', Product code: '0x%.08X', %lu TXPDO(s), %lu RXPDO(s)\n",devno++,dev->name,dev->product_code,dev->txpdo.size(),dev->rxpdo.size());
+			if(verbose) {
 				for(auto pdoList : { dev->txpdo, dev->rxpdo }) {
 					for(Pdo* pdo : pdoList) {
 						printf("\tPDO: '%s', index: 0x%.04X has %lu entries\n",pdo->name,pdo->index,pdo->entries.size());
@@ -128,20 +131,20 @@ void ESIXML::parseXMLPdo(const tinyxml2::XMLElement* xmlpdo, std::list<Pdo*>* pd
 		if(0 == strcmp(attr->Name(),"Mandatory")) {
 			if(tinyxml2::XML_SUCCESS != attr->QueryBoolValue(&pdo->mandatory))
 				pdo->mandatory = (attr->IntValue() == 1) ? true : false;
-			printf("Device/%s/@Mandatory: %s ('%s')\n",xmlpdo->Name(),pdo->mandatory ? "yes" : "no",attr->Value());
+			if(very_verbose) printf("Device/%s/@Mandatory: %s ('%s')\n",xmlpdo->Name(),pdo->mandatory ? "yes" : "no",attr->Value());
 		} else
 		if(0 == strcmp(attr->Name(),"Fixed")) {
 			if(tinyxml2::XML_SUCCESS != attr->QueryBoolValue(&pdo->fixed))
 				pdo->fixed = (attr->IntValue() == 1) ? true : false;
-			printf("Device/%s/@Fixed: %s ('%s')\n",xmlpdo->Name(),pdo->fixed ? "yes" : "no",attr->Value());
+			if(very_verbose) printf("Device/%s/@Fixed: %s ('%s')\n",xmlpdo->Name(),pdo->fixed ? "yes" : "no",attr->Value());
 		} else
 		if(0 == strcmp(attr->Name(),"Sm")) {
 			pdo->syncmanager = attr->IntValue();
-			printf("Device/%s/@Sm: '%d'\n",xmlpdo->Name(),pdo->syncmanager);
+			if(very_verbose) printf("Device/%s/@Sm: %d\n",xmlpdo->Name(),pdo->syncmanager);
 		} else
 		if(0 == strcmp(attr->Name(),"Su")) {
 			pdo->syncunit = attr->IntValue();
-			printf("Device/%s/@Su: '%d'\n",xmlpdo->Name(),pdo->syncunit);
+			if(very_verbose) printf("Device/%s/@Su: '%d'\n",xmlpdo->Name(),pdo->syncunit);
 		} else
 		{
 			printf("Unhandled Device/%s Attribute: '%s' = '%s'\n",xmlpdo->Name(),attr->Name(),attr->Value());
@@ -152,11 +155,11 @@ void ESIXML::parseXMLPdo(const tinyxml2::XMLElement* xmlpdo, std::list<Pdo*>* pd
 	{
 		if(0 == strcmp(pdochild->Name(),"Index")) {
 			pdo->index = hexdecstr2uint32(pdochild->GetText());
-			printf("Device/%s/Index: '0x%.04X'\n",xmlpdo->Name(),pdo->index);
+			if(verbose) printf("Device/%s/Index: '0x%.04X'\n",xmlpdo->Name(),pdo->index);
 		} else
 		if(0 == strcmp(pdochild->Name(),"Name")) {
 			pdo->name = pdochild->GetText();
-			printf("Device/%s/Name: '%s'\n",xmlpdo->Name(),pdo->name);
+			if(verbose)printf("Device/%s/Name: '%s'\n",xmlpdo->Name(),pdo->name);
 		} else
 		if(0 == strcmp(pdochild->Name(),"Entry")) {
 			PdoEntry* entry = new PdoEntry();
@@ -165,23 +168,24 @@ void ESIXML::parseXMLPdo(const tinyxml2::XMLElement* xmlpdo, std::list<Pdo*>* pd
 			{
 				if(0 == strcmp(entrychild->Name(),"Name")) {
 					entry->name = entrychild->GetText();
-					if(verbose) printf("Device/%s/Entry/Name: '%s'\n",xmlpdo->Name(),entry->name);
+					if(very_verbose) printf("Device/%s/Entry/Name: '%s'\n",xmlpdo->Name(),entry->name);
 				} else
 				if(0 == strcmp(entrychild->Name(),"Index")) {
 					entry->index = hexdecstr2uint32(entrychild->GetText());
-					if(verbose) printf("Device/%s/Entry/Index: '0x%.04X'\n",xmlpdo->Name(),entry->index);
+					if(very_verbose) printf("Device/%s/Entry/Index: '0x%.04X'\n",xmlpdo->Name(),entry->index);
 				} else
 				if(0 == strcmp(entrychild->Name(),"BitLen")) {
 					entry->bitlen = entrychild->IntText();
-					if(verbose) printf("Device/%s/Entry/BitLen: %d\n",xmlpdo->Name(),entry->bitlen);
+					if(very_verbose) printf("Device/%s/Entry/BitLen: %d\n",xmlpdo->Name(),entry->bitlen);
 				} else
 				if(0 == strcmp(entrychild->Name(),"SubIndex")) {
-					entry->subindex = entrychild->IntText(); // TODO: HexDec
-					if(verbose) printf("Device/%s/Entry/SubIndex: '%d'\n",xmlpdo->Name(),entry->subindex);
+					//entry->subindex = entrychild->IntText(); // TODO: HexDec
+					entry->subindex = hexdecstr2uint32(entrychild->GetText());
+					if(very_verbose) printf("Device/%s/Entry/SubIndex: %d\n",xmlpdo->Name(),entry->subindex);
 				} else
 				if(0 == strcmp(entrychild->Name(),"DataType")) {
 					entry->datatype = entrychild->GetText();
-					if(verbose) printf("Device/%s/Entry/DataType: '%s'\n",xmlpdo->Name(),entry->datatype);
+					if(very_verbose) printf("Device/%s/Entry/DataType: '%s'\n",xmlpdo->Name(),entry->datatype);
 				} else
 				{
 					printf("Unhandled Device/%s/Entry Element: '%s' = '%s'\n",xmlpdo->Name(),entrychild->Name(),entrychild->GetText());
@@ -204,22 +208,22 @@ void ESIXML::parseXMLSyncUnit(const tinyxml2::XMLElement* xmlsu, Device* dev) {
 		if(0 == strcmp(attr->Name(),"SeparateSu")) {
 			if(tinyxml2::XML_SUCCESS != attr->QueryBoolValue(&su->separate_su))
 				su->separate_su = (attr->IntValue() == 1) ? true : false;
-			printf("Device/Su/@SeparateSu: %s ('%s')\n",su->separate_su ? "yes" : "no",attr->Value());
+			if(very_verbose) printf("Device/Su/@SeparateSu: %s ('%s')\n",su->separate_su ? "yes" : "no",attr->Value());
 		} else
 		if(0 == strcmp(attr->Name(),"SeparateFrame")) {
 			if(tinyxml2::XML_SUCCESS != attr->QueryBoolValue(&su->separate_frame))
 				su->separate_frame = (attr->IntValue() == 1) ? true : false;
-			printf("Device/Su/@SeparateFrame: %s ('%s')\n",su->separate_frame ? "yes" : "no",attr->Value());
+			if(very_verbose) printf("Device/Su/@SeparateFrame: %s ('%s')\n",su->separate_frame ? "yes" : "no",attr->Value());
 		} else
 		if(0 == strcmp(attr->Name(),"DependOnInputState")) {
 			if(tinyxml2::XML_SUCCESS != attr->QueryBoolValue(&su->depend_on_input_state))
 				su->depend_on_input_state = (attr->IntValue() == 1) ? true : false;
-			printf("Device/Su/@DependOnInputState: %s ('%s')\n",su->depend_on_input_state ? "yes" : "no",attr->Value());
+			if(very_verbose) printf("Device/Su/@DependOnInputState: %s ('%s')\n",su->depend_on_input_state ? "yes" : "no",attr->Value());
 		} else
 		if(0 == strcmp(attr->Name(),"FrameRepeatSupport")) {
 			if(tinyxml2::XML_SUCCESS != attr->QueryBoolValue(&su->frame_repeat_support))
 				su->frame_repeat_support = (attr->IntValue() == 1) ? true : false;
-			printf("Device/Su/@FrameRepeatSupport: %s ('%s')\n",su->frame_repeat_support ? "yes" : "no",attr->Value());
+			if(very_verbose) printf("Device/Su/@FrameRepeatSupport: %s ('%s')\n",su->frame_repeat_support ? "yes" : "no",attr->Value());
 		} else
 		{
 			printf("Unhandled Device/%s Attribute: '%s' = '%s'\n",xmlsu->Name(),attr->Name(),attr->Value());
@@ -239,15 +243,15 @@ void ESIXML::parseXMLDistributedClock(const tinyxml2::XMLElement* xmldc, Distrib
 			{
 				if(0 == strcmp(dcopmodechild->Name(),"Name")) {
 					opmode->name = dcopmodechild->GetText();
-					printf("Device/Dc/Opmode/Name: %s\n",opmode->name);
+					if(verbose) printf("Device/Dc/Opmode/Name: %s\n",opmode->name);
 				} else
 				if(0 == strcmp(dcopmodechild->Name(),"Desc")) {
 					opmode->desc = dcopmodechild->GetText();
-					printf("Device/Dc/Opmode/Desc: %s\n",opmode->desc);
+					if(very_verbose) printf("Device/Dc/Opmode/Desc: %s\n",opmode->desc);
 				} else
 				if(0 == strcmp(dcopmodechild->Name(),"CycleTimeSync0")) {
 					opmode->cycletimesync0 = dcopmodechild->UnsignedText();
-					if(verbose) printf("Device/Dc/Opmode/CycleTimeSync0: %u\n",opmode->cycletimesync0);
+					if(very_verbose) printf("Device/Dc/Opmode/CycleTimeSync0: %u\n",opmode->cycletimesync0);
 					for (const tinyxml2::XMLAttribute* cts0attr = dcopmodechild->FirstAttribute();
 						cts0attr != 0; cts0attr = cts0attr->Next())
 					{
@@ -261,7 +265,7 @@ void ESIXML::parseXMLDistributedClock(const tinyxml2::XMLElement* xmldc, Distrib
 				} else
 				if(0 == strcmp(dcopmodechild->Name(),"CycleTimeSync1")) {
 					opmode->cycletimesync1 = dcopmodechild->UnsignedText();
-					if(verbose) printf("Device/Dc/Opmode/CycleTimeSync1: %u\n",opmode->cycletimesync1);
+					if(very_verbose) printf("Device/Dc/Opmode/CycleTimeSync1: %u\n",opmode->cycletimesync1);
 					for (const tinyxml2::XMLAttribute* cts1attr = dcopmodechild->FirstAttribute();
 						cts1attr != 0; cts1attr = cts1attr->Next())
 					{
@@ -275,7 +279,7 @@ void ESIXML::parseXMLDistributedClock(const tinyxml2::XMLElement* xmldc, Distrib
 				} else
 				if(0 == strcmp(dcopmodechild->Name(),"ShiftTimeSync0")) {
 					opmode->shifttimesync0 = dcopmodechild->UnsignedText();
-					if(verbose) printf("Device/Dc/Opmode/ShiftTimeSync0: %u\n",opmode->shifttimesync0);
+					if(very_verbose) printf("Device/Dc/Opmode/ShiftTimeSync0: %u\n",opmode->shifttimesync0);
 					for (const tinyxml2::XMLAttribute* sts0attr = dcopmodechild->FirstAttribute();
 						sts0attr != 0; sts0attr = sts0attr->Next())
 					{
@@ -284,7 +288,7 @@ void ESIXML::parseXMLDistributedClock(const tinyxml2::XMLElement* xmldc, Distrib
 				} else
 				if(0 == strcmp(dcopmodechild->Name(),"ShiftTimeSync1")) {
 					opmode->shifttimesync1 = dcopmodechild->UnsignedText();
-					if(verbose) printf("Device/Dc/Opmode/ShiftTimeSync1: %u\n",opmode->shifttimesync1);
+					if(very_verbose) printf("Device/Dc/Opmode/ShiftTimeSync1: %u\n",opmode->shifttimesync1);
 					for (const tinyxml2::XMLAttribute* sts1attr = dcopmodechild->FirstAttribute();
 						sts1attr != 0; sts1attr = sts1attr->Next())
 					{
@@ -293,7 +297,7 @@ void ESIXML::parseXMLDistributedClock(const tinyxml2::XMLElement* xmldc, Distrib
 				} else
 				if(0 == strcmp(dcopmodechild->Name(),"AssignActivate")) { // HexDecInt
 					opmode->assignactivate = (EC_SII_HexToUint32(dcopmodechild->GetText()) & 0xFFFF);
-					printf("Device/Dc/Opmode/AssignActivate: 0x%.04X\n",opmode->assignactivate);
+					if(verbose) printf("Device/Dc/Opmode/AssignActivate: 0x%.04X\n",opmode->assignactivate);
 				}
 				else {
 					printf("Unhandled Device/Dc/Opmode element: '%s' = '%s'\n",dcopmodechild->Name(),dcopmodechild->GetText());
@@ -314,18 +318,23 @@ void ESIXML::parseXMLObject(const tinyxml2::XMLElement* xmlobject, Dictionary* d
 	{
 		if(0 == strcmp(objchild->Name(),"Index")) {
 			obj->index = hexdecstr2uint32(objchild->GetText());
+			if(verbose) printf("Object Index: 0x%.04X\n",obj->index);
 		} else
 		if(0 == strcmp(objchild->Name(),"Name")) {
 			obj->name = objchild->GetText();
+			if(verbose) printf("Object Name: '%s'\n",obj->name);
 		} else
 		if(0 == strcmp(objchild->Name(),"Type")) {
 			obj->type = objchild->GetText();
+			if(very_verbose) printf("Object Type: '%s'\n",obj->type);
 		} else
 		if(0 == strcmp(objchild->Name(),"BitSize")) {
 			obj->bitsize = objchild->IntText();
+			if(very_verbose) printf("Object BitSize: '%.02d'\n",obj->bitsize);
 		} else
 		if(0 == strcmp(objchild->Name(),"BitOffs")) {
 			obj->bitoffset = objchild->IntText();
+			if(very_verbose) printf("Object BitOffset: '%.02d'\n",obj->bitoffset);
 		} else
 		if(0 == strcmp(objchild->Name(),"Info")) {
 			for (const tinyxml2::XMLElement* infochild = objchild->FirstChildElement();
@@ -333,9 +342,11 @@ void ESIXML::parseXMLObject(const tinyxml2::XMLElement* xmlobject, Dictionary* d
 			{
 				if(0 == strcmp(infochild->Name(),"DefaultData")) {
 					obj->defaultdata = infochild->GetText();
+					if(verbose) printf("Object DefaultData: '%s'\n",obj->defaultdata);
 				} else
 				if(0 == strcmp(infochild->Name(),"DefaultString")) {
 					obj->defaultstring = infochild->GetText();
+					if(verbose) printf("Object DefaultData: '%s'\n",obj->defaultstring);
 				} else
 				if(0 == strcmp(infochild->Name(),"SubItem")) {
 					parseXMLObject(infochild,dict,obj);
@@ -424,21 +435,28 @@ void ESIXML::parseXMLDataType(const tinyxml2::XMLElement* xmldatatype, Dictionar
 	{
 		if(0 == strcmp(dtchild->Name(),"Name")) {
 			datatype->name = dtchild->GetText();
+			if(verbose) printf("DataType/Name: '%s'\n",datatype->name);
 		} else
 		if(0 == strcmp(dtchild->Name(),"Type")) {
 			datatype->type = dtchild->GetText();
+			if(verbose) printf("DataType/Type: '%s'\n",datatype->type);
 		} else
 		if(0 == strcmp(dtchild->Name(),"SubIdx")) {
-			datatype->subindex = dtchild->IntText();
+//			datatype->subindex = dtchild->IntText();
+			datatype->subindex = (hexdecstr2uint32(dtchild->GetText()) & 0xFF);
+			if(very_verbose) printf("DataType/SubIdx: '%d'\n",datatype->subindex);
 		} else
 		if(0 == strcmp(dtchild->Name(),"BitSize")) {
 			datatype->bitsize = dtchild->IntText();
+			if(very_verbose) printf("DataType/BitSize: '%d'\n",datatype->bitsize);
 		} else
 		if(0 == strcmp(dtchild->Name(),"BitOffs")) {
 			datatype->bitoffset = dtchild->IntText();
+			if(very_verbose) printf("DataType/BitOffs: '%d'\n",datatype->bitoffset);
 		} else
 		if(0 == strcmp(dtchild->Name(),"BaseType")) {
 			datatype->basetype = dtchild->GetText();
+			if(very_verbose) printf("DataType/BaseType: '%s'\n",datatype->basetype);
 		} else
 		if(0 == strcmp(dtchild->Name(),"ArrayInfo")) {
 			ArrayInfo* arrinfo = new ArrayInfo;
@@ -447,9 +465,11 @@ void ESIXML::parseXMLDataType(const tinyxml2::XMLElement* xmldatatype, Dictionar
 			{
 				if(0 == strcmp(arrchild->Name(),"LBound")) {
 					arrinfo->lowerbound = arrchild->IntText();
+					if(very_verbose) printf("DataType/ArrayInfo/LBound: '%d'\n",arrinfo->lowerbound);
 				} else
 				if(0 == strcmp(arrchild->Name(),"Elements")) {
 					arrinfo->elements = arrchild->IntText();
+					if(very_verbose) printf("DataType/ArrayInfo/Elements: '%d'\n",arrinfo->elements);
 				} else
 				{
 					printf("Unhandled Device/Profile/DataTypes/DataType/ArrayInfo element: '%s' = '%s'\n",arrchild->Name(),arrchild->GetText());
@@ -497,9 +517,10 @@ void ESIXML::parseXMLDataType(const tinyxml2::XMLElement* xmldatatype, Dictionar
 			parseXMLDataType(dtchild,dict,datatype);
 		} else
 		{
-			printf("Unhandled Device/Profile/DataTypes/Object element: '%s' = '%s'\n",dtchild->Name(),dtchild->GetText());
+			printf("Unhandled Device/Profile/DataTypes element: '%s' = '%s'\n",dtchild->Name(),dtchild->GetText());
 		}
 	}
+
 	// TODO: Improve the var/record/array stuff...
 	if(NULL != parent) {
 		if(NULL != datatype->type) {
@@ -587,7 +608,7 @@ void ESIXML::parseXMLDevice(const tinyxml2::XMLElement* xmldevice) {
 	{
 		if(0 == strcmp(child->Name(),"Name")) {
 			dev->name = child->GetText();
-			printf("Device/Name: '%s'\n",dev->name);
+			if(verbose) printf("Device/Name: '%s'\n",dev->name);
 		} else
 		if(0 == strcmp(child->Name(),"Type")) {
 			dev->type = child->GetText();
@@ -596,11 +617,11 @@ void ESIXML::parseXMLDevice(const tinyxml2::XMLElement* xmldevice) {
 			{
 				if(0 == strcmp(attr->Name(),"ProductCode")) {
 					dev->product_code = EC_SII_HexToUint32(attr->Value());
-					printf("Device/Type/@ProductCode: 0x%.08X\n",dev->product_code);
+					if(verbose) printf("Device/Type/@ProductCode: 0x%.08X\n",dev->product_code);
 				} else
 				if(0 == strcmp(attr->Name(),"RevisionNo")) {
 					dev->revision_no = EC_SII_HexToUint32(attr->Value());
-					printf("Device/Type/@RevisionNo: 0x%.08X\n",dev->revision_no);
+					if(very_verbose) printf("Device/Type/@RevisionNo: 0x%.08X\n",dev->revision_no);
 				} else
 				{
 					printf("Unhandled Device/Type Attribute: '%s' = '%s'\n",attr->Name(),attr->Value());
@@ -628,15 +649,17 @@ void ESIXML::parseXMLDevice(const tinyxml2::XMLElement* xmldevice) {
 		if(0 == strcmp(child->Name(),"Fmmu")) {
 			FMMU* fmmu = new FMMU();
 			fmmu->type = child->GetText();
-			printf("Device/Fmmu: %s\n",fmmu->type);
+			if(very_verbose) printf("Device/Fmmu: %s\n",fmmu->type);
 			for (const tinyxml2::XMLAttribute* attr = child->FirstAttribute();
 				attr != 0; attr = attr->Next())
 			{
 				if(0 == strcmp(attr->Name(),"Sm")) {
-					fmmu->syncmanager = attr->IntValue();
+//					fmmu->syncmanager = attr->IntValue();
+					fmmu->syncmanager = (int32_t)hexdecstr2uint32(attr->Value());
 				} else
 				if(0 == strcmp(attr->Name(),"Su")) {
-					fmmu->syncunit = attr->IntValue();
+//					fmmu->syncunit = attr->IntValue();
+					fmmu->syncunit = (int32_t)hexdecstr2uint32(attr->Value());
 				} else
 				{
 					printf("Unhandled Device/Fmmu Attribute: '%s' = '%s'\n",attr->Name(),attr->Value());
@@ -664,16 +687,18 @@ void ESIXML::parseXMLDevice(const tinyxml2::XMLElement* xmldevice) {
 					// Calculate CRC8 value of the first 7 words
 					dev->configdata[EC_SII_CONFIGDATA_SIZEB-2] =
 						crc8(dev->configdata,EC_SII_CONFIGDATA_SIZEB-2);
-					printf("Device/Eeprom/ConfigData: ");
-					for(uint8_t i = 0; i < EC_SII_CONFIGDATA_SIZEB; ++i) {
-						if(i == EC_SII_CONFIGDATA_SIZEB-1) printf("%.02X",dev->configdata[i]);
-						else  printf("%.02X ",dev->configdata[i]);
+					if(very_verbose) {
+						printf("Device/Eeprom/ConfigData: ");
+						for(uint8_t i = 0; i < EC_SII_CONFIGDATA_SIZEB; ++i) {
+							if(i == EC_SII_CONFIGDATA_SIZEB-1) printf("%.02X",dev->configdata[i]);
+							else  printf("%.02X ",dev->configdata[i]);
+						}
+						printf("\n");
 					}
-					printf("\n");
 				} else
 				if(0 == strcmp(eepchild->Name(),"ByteSize")) {
 					dev->eepromsize = eepchild->UnsignedText();
-					printf("Device/Eeprom/ByteSize: %u\n",dev->eepromsize);
+					if(very_verbose) printf("Device/Eeprom/ByteSize: %u\n",dev->eepromsize);
 				} else
 				{
 					printf("Unhandled Device/Eeprom element: '%s' = '%s'\n",eepchild->Name(),eepchild->GetText());
@@ -757,12 +782,12 @@ void ESIXML::parseXMLVendor(const tinyxml2::XMLElement* xmlvendor) {
 
 void ESIXML::parseXMLElement(const tinyxml2::XMLElement* element, void* data) {
 	if(NULL == element) return;
-	printf("Element name: '%s'\n",element->Name());
-	if(element->GetText()) printf("Element text: '%s'\n",element->GetText());
+//	printf("Element name: '%s'\n",element->Name());
+//	if(element->GetText()) printf("Element text: '%s'\n",element->GetText());
 	for (const tinyxml2::XMLAttribute* attr = element->FirstAttribute();
 		attr != 0; attr = attr->Next())
 	{
-		printf("Attribute: '%s' = '%s'\n",attr->Name(),attr->Value());
+//		printf("Attribute: '%s' = '%s'\n",attr->Name(),attr->Value());
 	}
 	for (const tinyxml2::XMLElement* child = element->FirstChildElement();
 		child != 0; child = child->NextSiblingElement())
@@ -777,7 +802,6 @@ void ESIXML::parseXMLElement(const tinyxml2::XMLElement* element, void* data) {
 			parseXMLVendor(child);
 		} else
 		{
-			printf("Child element name: '%s'\n",child->Name());
 			if(!child->NoChildren()) parseXMLElement(child);
 			else printf("Unhandled element '%s'\n",child->Name());
 		}

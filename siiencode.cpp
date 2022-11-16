@@ -130,7 +130,6 @@ void SII::encodeEEPROMBinary(uint32_t vendor_id, Device* dev, const bool encodep
 		}
 		// Adjust write pointer for padding
 		p += stringcatpad;
-		//for(; stringcatpad > 0; --stringcatpad) ++p;
 
 		// Next category, seems to be GENERAL (ETG2000 Table 7)
 		*(p++) = EEPROMCategoryGeneral & 0xFF;
@@ -306,7 +305,6 @@ void SII::encodeEEPROMBinary(uint32_t vendor_id, Device* dev, const bool encodep
 				*(p++) = txpdocatlen & 0xFF;
 				*(p++) = (txpdocatlen >> 8) & 0xFF;
 
-				//uint16_t index = EC_SII_HexToUint32(pdo->index) & 0xFFFF; // HexDec
 				uint16_t index = pdo->index & 0xFFFF; // HexDec
 				*(p++) = index & 0xFF;
 				*(p++) = (index >> 8) & 0xFF;
@@ -324,7 +322,6 @@ void SII::encodeEEPROMBinary(uint32_t vendor_id, Device* dev, const bool encodep
 				*(p++) = (flags >> 8) & 0xFF;
 
 				for(PdoEntry* entry : pdo->entries) {
-//								index = EC_SII_HexToUint32(entry->index) & 0xFFFF;
 					index = entry->index & 0xFFFF;
 					*(p++) = index & 0xFF;
 					*(p++) = (index >> 8) & 0xFF;
@@ -349,7 +346,6 @@ void SII::encodeEEPROMBinary(uint32_t vendor_id, Device* dev, const bool encodep
 				*(p++) = rxpdocatlen & 0xFF;
 				*(p++) = (rxpdocatlen >> 8) & 0xFF;
 
-//							uint16_t index = EC_SII_HexToUint32(pdo->index) & 0xFFFF; // HexDec
 				uint16_t index = pdo->index & 0xFFFF; // HexDec
 				*(p++) = index & 0xFF;
 				*(p++) = (index >> 8) & 0xFF;
@@ -366,7 +362,6 @@ void SII::encodeEEPROMBinary(uint32_t vendor_id, Device* dev, const bool encodep
 				*(p++) = (flags >> 8) & 0xFF;
 
 				for(PdoEntry* entry : pdo->entries) {
-//								index = EC_SII_HexToUint32(entry->index) & 0xFFFF;
 					index = entry->index & 0xFFFF;
 					*(p++) = index & 0xFF;
 					*(p++) = (index >> 8) & 0xFF;
