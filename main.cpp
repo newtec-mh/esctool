@@ -278,16 +278,11 @@ int encodeSII(const std::string& file, std::string output = "") {
 				dtARR->arrayinfo = new ArrayInfo;
 				dtARR->arrayinfo->elements = entries;
 				dtARR->arrayinfo->lowerbound = 1;
-
 				dict->datatypes.push_back(dtARR);
-
 				DataType* dt = new DataType;
 				snprintf(s,L,"DT%.04X",index);
 				dt->name = createStr();
 				dt->bitsize = dtARR->bitsize+DT_USINT->bitsize+8;
-
-				printf("Creating DT '%s' bitsize %d\n",dt->name,dt->bitsize);
-
 				dt->subitems.push_back(
 					new DataType {
 						.name = subIndex000Str,
@@ -485,8 +480,8 @@ int encodeSII(const std::string& file, std::string output = "") {
 					}
 				}
 				if(datatype->bitsize != bitsize) {
-					printf("WARNING: Bitsize of datatype '%s' seems off (calculated %d vs. parsed %d)\n",datatype->name,bitsize,datatype->bitsize);
-					printDataTypeVerbose(datatype);
+					printf("\033[0;31mWARNING:\033[0m Bitsize of datatype '%s' seems off (calculated %d vs. parsed %d)\n",datatype->name,bitsize,datatype->bitsize);
+					if(verbose) printDataTypeVerbose(datatype);
 				}
 			}
 		}

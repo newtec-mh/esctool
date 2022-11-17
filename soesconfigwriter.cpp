@@ -170,12 +170,10 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 
 	auto deduceDT = [dict=dev->profile->dictionary,&findDT](Object* obj, const int subitemNo) {
 		const char* type = NULL;
-//		printf("Deducing datatype of object %.04X ('%s') subitem %d: type: '%s'\n",obj->index,obj->name,subitemNo,obj->type);
 		DataType* dt = obj->datatype ? obj->datatype : findDT(obj->type);
 		if(dt != NULL && (dt->subitems.size() > 1 && dt->subitems[1]->subindex == 0))
 		{
 			// DataType is an array
-//			printf("\033[0;32mINFO:\033[0m DataType of object '0x%.04X' subitem '%u' seems to be array\n",obj->index,subitemNo);
 			dt = findDT(dt->subitems[1]->type);
 			if(NULL != dt && dt->arrayinfo) {
 				type = dt->basetype;
@@ -196,10 +194,7 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 			if(!dt->type) type = dt->name;
 			else type = dt->type;
 		}
-		if(NULL == type) {
-			type = obj->type; // Fallback
-		}
-//		printf("\nDeduced datatype of object %.04X ('%s','%s') subitem %d is '%s'\n\n",obj->index,obj->name,obj->type,subitemNo,type);
+		if(NULL == type) type = obj->type; // Fallback
 		return type;
 	};
 	
@@ -253,31 +248,6 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 							continue;
 						}
 						const char* type = deduceDT(si,subitem);
-/*						DataType* dt = si->datatype;
-						if(NULL != dt) type = dt->type;
-
-						if(dt != NULL && (dt->subitems.size() > 1 && dt->subitems[1]->subindex == 0))
-						{
-							// DataType is an array
-							dt = findDT(dt->subitems[1]->type);
-						}
-
-						if(NULL == dt) dt = findDT(si->type != NULL ? si->type : o->type);
-						if(NULL == type && NULL != dt) {
-							if(dt->arrayinfo) type = dt->basetype;
-							else {
-								try {
-									type = dt->subitems.at(subitem)->type;
-								} catch(const std::out_of_range&) {
-									type = NULL;
-								}
-							}
-						}*/
-/*						const char* type = si->datatype ?
-							(si->datatype->type ? si->datatype->type :
-								si->datatype->name) :
-							o->type;
-						*/
 						if(NULL == type) {
 							printf("WARNING: Could not determine C-datatype for '%s':'%s' ('%s')\n",o->name,si->name,(si->datatype?si->datatype->name:o->type));
 							continue;
@@ -401,9 +371,6 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 					<< subitem
 					<< ", ";
 				uint16_t index = obj->index & 0xFFFF;
-
-//				DataType* datatype = obj->datatype;
-//				const char* type = datatype ? (datatype->type ? datatype->type : datatype->name) : obj->type;
 				const char* type = deduceDT(obj,subitem);
 				DataType* datatype = findDT(type);
 

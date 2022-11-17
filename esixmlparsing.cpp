@@ -411,24 +411,6 @@ void ESIXML::parseXMLObject(const tinyxml2::XMLElement* xmlobject, Dictionary* d
 		if(NULL == obj->flags) obj->flags = parent->flags;
 		parent->subitems.push_back(obj);
 	} else dict->objects.push_back(obj);
-/*
-	for(DataType* dt : dict->datatypes) {
-		if(0 == strcmp(obj->type,dt->name)) {
-			obj->datatype = dt;
-			if(parent) {
-				int subitemno = parent->subitems.size()-1;
-				if(parent != NULL && !dt->subitems.empty() &&
-					dt->subitems.size() > subitemno)
-				{
-					auto dtptr = dt->subitems.begin();
-					std::advance(dtptr,subitemno);
-					obj->datatype = (*dtptr);
-					break;
-				}
-			}
-			break;
-		}
-	}*/
 }
 
 void ESIXML::parseXMLDataType(const tinyxml2::XMLElement* xmldatatype, Dictionary* dict, DataType* parent) {
@@ -445,7 +427,6 @@ void ESIXML::parseXMLDataType(const tinyxml2::XMLElement* xmldatatype, Dictionar
 			if(verbose) printf("DataType/Type: '%s'\n",datatype->type);
 		} else
 		if(0 == strcmp(dtchild->Name(),"SubIdx")) {
-//			datatype->subindex = dtchild->IntText();
 			datatype->subindex = (hexdecstr2uint32(dtchild->GetText()) & 0xFF);
 			if(very_verbose) printf("DataType/SubIdx: '%d'\n",datatype->subindex);
 		} else
@@ -526,18 +507,6 @@ void ESIXML::parseXMLDataType(const tinyxml2::XMLElement* xmldatatype, Dictionar
 
 	// TODO: Improve the var/record/array stuff...
 	if(NULL != parent) {
-/*		if(NULL != datatype->type) {
-			for(DataType* dt : dict->datatypes) {
-				if(0 == strcmp(datatype->type,dt->name)) {
-					if(dt->arrayinfo) {
-						datatype->type = dt->basetype;
-						parent->type = dt->basetype;
-						parent->arrayinfo = dt->arrayinfo;
-					}
-				}
-			}
-		}
-		if(NULL == datatype->type) datatype->type = parent->type;*/
 		if(NULL == datatype->flags) datatype->flags = parent->flags;
 		parent->subitems.push_back(datatype);
 	} else {
@@ -657,11 +626,9 @@ void ESIXML::parseXMLDevice(const tinyxml2::XMLElement* xmldevice) {
 				attr != 0; attr = attr->Next())
 			{
 				if(0 == strcmp(attr->Name(),"Sm")) {
-//					fmmu->syncmanager = attr->IntValue();
 					fmmu->syncmanager = (int32_t)hexdecstr2uint32(attr->Value());
 				} else
 				if(0 == strcmp(attr->Name(),"Su")) {
-//					fmmu->syncunit = attr->IntValue();
 					fmmu->syncunit = (int32_t)hexdecstr2uint32(attr->Value());
 				} else
 				{
@@ -785,15 +752,6 @@ void ESIXML::parseXMLVendor(const tinyxml2::XMLElement* xmlvendor) {
 
 void ESIXML::parseXMLElement(const tinyxml2::XMLElement* element, void* data) {
 	if(NULL == element) return;
-/*
-	printf("Element name: '%s'\n",element->Name());
-	if(element->GetText()) printf("Element text: '%s'\n",element->GetText());
-	for (const tinyxml2::XMLAttribute* attr = element->FirstAttribute();
-		attr != 0; attr = attr->Next())
-	{
-		printf("Attribute: '%s' = '%s'\n",attr->Name(),attr->Value());
-	}
-*/
 	for (const tinyxml2::XMLElement* child = element->FirstChildElement();
 		child != 0; child = child->NextSiblingElement())
 	{
