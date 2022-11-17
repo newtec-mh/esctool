@@ -160,6 +160,49 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 		configout.sync_with_stdio();
 		configout.close();
 	}
+
+	auto findDT = [dict=dev->profile->dictionary](const char* dtname) {
+		if(NULL == dtname) return (DataType*)NULL;
+		for(DataType* d : dict->datatypes)
+			if(0 == strcmp(d->name,dtname)) return d;
+		return (DataType*)NULL;
+	};
+
+	auto deduceDT = [dict=dev->profile->dictionary,&findDT](Object* obj, const int subitemNo) {
+		const char* type = NULL;
+//		printf("Deducing datatype of object %.04X ('%s') subitem %d: type: '%s'\n",obj->index,obj->name,subitemNo,obj->type);
+		DataType* dt = obj->datatype ? obj->datatype : findDT(obj->type);
+		if(dt != NULL && (dt->subitems.size() > 1 && dt->subitems[1]->subindex == 0))
+		{
+			// DataType is an array
+//			printf("\033[0;32mINFO:\033[0m DataType of object '0x%.04X' subitem '%u' seems to be array\n",obj->index,subitemNo);
+			dt = findDT(dt->subitems[1]->type);
+			if(NULL != dt && dt->arrayinfo) {
+				type = dt->basetype;
+			} else {
+				printf("\033[0;31mWARNING:\033[0m DataType of object '0x%.04X' subitem '%u' seems to be array, but no arrayinfo found\n",obj->index,subitemNo);
+			}
+		}
+
+		if(NULL == dt) dt = findDT(obj->type != NULL ? obj->type : (obj->parent ? obj->parent->type : NULL));
+		if(NULL == type && NULL != dt) {
+			try {
+				type = dt->subitems.at(subitemNo)->type;
+			} catch(const std::out_of_range&) {
+				type = NULL;
+			}
+		}
+		if(NULL == type && NULL != dt) {
+			if(!dt->type) type = dt->name;
+			else type = dt->type;
+		}
+		if(NULL == type) {
+			type = obj->type; // Fallback
+		}
+//		printf("\nDeduced datatype of object %.04X ('%s','%s') subitem %d is '%s'\n\n",obj->index,obj->name,obj->type,subitemNo,type);
+		return type;
+	};
+	
 	if(dev->profile && dev->profile->dictionary) {
 		std::ofstream typesout;
 		typesout.open(utypesfile.c_str(), std::ios::out | std::ios::trunc);
@@ -209,12 +252,34 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 							++subitem;
 							continue;
 						}
-						const char* type = si->datatype ? 
+						const char* type = deduceDT(si,subitem);
+/*						DataType* dt = si->datatype;
+						if(NULL != dt) type = dt->type;
+
+						if(dt != NULL && (dt->subitems.size() > 1 && dt->subitems[1]->subindex == 0))
+						{
+							// DataType is an array
+							dt = findDT(dt->subitems[1]->type);
+						}
+
+						if(NULL == dt) dt = findDT(si->type != NULL ? si->type : o->type);
+						if(NULL == type && NULL != dt) {
+							if(dt->arrayinfo) type = dt->basetype;
+							else {
+								try {
+									type = dt->subitems.at(subitem)->type;
+								} catch(const std::out_of_range&) {
+									type = NULL;
+								}
+							}
+						}*/
+/*						const char* type = si->datatype ?
 							(si->datatype->type ? si->datatype->type :
 								si->datatype->name) :
 							o->type;
+						*/
 						if(NULL == type) {
-							printf("WARNING: Could not determine C-datatype for '%s':'%s'\n",o->name,si->name);
+							printf("WARNING: Could not determine C-datatype for '%s':'%s' ('%s')\n",o->name,si->name,(si->datatype?si->datatype->name:o->type));
 							continue;
 						}
 						typesout << "\t";
@@ -329,7 +394,7 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 			}
 			out << "\n";
 
-			auto writeObject = [this,&out](Object* obj, Object* parent, int& subitem, const int nitems, Dictionary* dict = NULL) {
+			auto writeObject = [this,&out,&findDT,&deduceDT](Object* obj, Object* parent, int& subitem, const int nitems, Dictionary* dict = NULL) {
 				bool objref = false;
 				out << "{ 0x"
 					<< std::setw(2)
@@ -337,8 +402,11 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 					<< ", ";
 				uint16_t index = obj->index & 0xFFFF;
 
-				DataType* datatype = obj->datatype;
-				const char* type = datatype ? (datatype->type ? datatype->type : datatype->name) : obj->type;
+//				DataType* datatype = obj->datatype;
+//				const char* type = datatype ? (datatype->type ? datatype->type : datatype->name) : obj->type;
+				const char* type = deduceDT(obj,subitem);
+				DataType* datatype = findDT(type);
+
 				const ObjectFlags* flags = obj->flags ? obj->flags : (datatype ? datatype->flags : NULL);
 				uint32_t bitsize = obj->bitsize ? obj->bitsize : (datatype ? datatype->bitsize : 0);
 				if(NULL == type) {

@@ -2,6 +2,7 @@
 #define ESCTOOLDEFS_H
 #include <cstdint>
 #include <list>
+#include <vector>
 #include "esidefs.h"
 
 struct Group {
@@ -106,7 +107,7 @@ struct DataType {
 	const char* basetype = NULL;
 	uint8_t subindex = 0;
 	ArrayInfo* arrayinfo = NULL;
-	std::list<DataType*> subitems;
+	std::vector<DataType*> subitems;
 	ObjectFlags* flags = NULL;
 };
 
@@ -121,6 +122,7 @@ struct Object {
 	const char* defaultstring = NULL;
 	ObjectFlags* flags = NULL;
 	std::list<Object*> subitems;
+	Object* parent = NULL;
 };
 
 struct Dictionary {

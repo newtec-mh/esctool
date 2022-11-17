@@ -402,13 +402,16 @@ void ESIXML::parseXMLObject(const tinyxml2::XMLElement* xmlobject, Dictionary* d
 			printf("Unhandled Device/Profile/Objects/Object element: '%s' = '%s'\n",objchild->Name(),objchild->GetText());
 		}
 	}
+
 	if(NULL != parent) {
+		obj->parent = parent;
 		if(0 == obj->index) obj->index = parent->index;
+		if(NULL == obj->datatype) obj->datatype = parent->datatype;
 		if(NULL == obj->type) obj->type = parent->type;
 		if(NULL == obj->flags) obj->flags = parent->flags;
 		parent->subitems.push_back(obj);
 	} else dict->objects.push_back(obj);
-
+/*
 	for(DataType* dt : dict->datatypes) {
 		if(0 == strcmp(obj->type,dt->name)) {
 			obj->datatype = dt;
@@ -425,7 +428,7 @@ void ESIXML::parseXMLObject(const tinyxml2::XMLElement* xmlobject, Dictionary* d
 			}
 			break;
 		}
-	}
+	}*/
 }
 
 void ESIXML::parseXMLDataType(const tinyxml2::XMLElement* xmldatatype, Dictionary* dict, DataType* parent) {
@@ -523,7 +526,7 @@ void ESIXML::parseXMLDataType(const tinyxml2::XMLElement* xmldatatype, Dictionar
 
 	// TODO: Improve the var/record/array stuff...
 	if(NULL != parent) {
-		if(NULL != datatype->type) {
+/*		if(NULL != datatype->type) {
 			for(DataType* dt : dict->datatypes) {
 				if(0 == strcmp(datatype->type,dt->name)) {
 					if(dt->arrayinfo) {
@@ -534,26 +537,10 @@ void ESIXML::parseXMLDataType(const tinyxml2::XMLElement* xmldatatype, Dictionar
 				}
 			}
 		}
-		if(NULL == datatype->type) datatype->type = parent->type;
+		if(NULL == datatype->type) datatype->type = parent->type;*/
 		if(NULL == datatype->flags) datatype->flags = parent->flags;
 		parent->subitems.push_back(datatype);
 	} else {
-		if(datatype->subitems.empty()) {
-			uint32_t bitsize = 0;
-			int siNo = 0;
-			for(DataType* dt : datatype->subitems) {
-				if(siNo == 0) {
-					bitsize += dt->bitsize;
-					bitsize += 8; // Padding
-				} else {
-					bitsize += dt->bitsize;
-				}
-				++siNo;
-			}
-			if(datatype->bitsize != bitsize) {
-				printf("WARNING: Bitsize of datatype '%s' seems off (calculated '%d' vs. parsed '%d'\n)",datatype->name,bitsize,datatype->bitsize);
-			}
-		}
 		dict->datatypes.push_back(datatype);
 	}
 }

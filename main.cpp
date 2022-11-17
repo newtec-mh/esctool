@@ -125,10 +125,8 @@ int encodeSII(const std::string& file, std::string output = "") {
 		// Device Name
 		// ...
 		Device* dev = esixml.getDevices().front();
+
 		// Create a boilerplate object dictionary if nothing exists and CoE is enabled
-		// For now we assume either everything or nothing is there...
-		// Later we should check the individual objects and check the needed ones
-		// are there.
 		if(writeobjectdict && dev->mailbox && dev->mailbox->coe_sdoinfo)
 		{
 			printf("Verifying and/or creating minimal object dictionary...\n");
@@ -271,7 +269,7 @@ int encodeSII(const std::string& file, std::string output = "") {
 				}
 			}
 
-			auto createArrayDT = [&dict,&createStr,L,&s](uint16_t index, const int entries, DataType* entryDT) {
+			auto createArrayDT = [&dict,&createStr,L,&s,&DT_USINT](uint16_t index, const int entries, DataType* entryDT) {
 				DataType* dtARR = new DataType;
 				snprintf(s,L,"DT%.04XARR",index);
 				dtARR->name = createStr();
@@ -286,19 +284,22 @@ int encodeSII(const std::string& file, std::string output = "") {
 				DataType* dt = new DataType;
 				snprintf(s,L,"DT%.04X",index);
 				dt->name = createStr();
-				dt->bitsize = (entries*(entryDT->bitsize))+16;
+				dt->bitsize = dtARR->bitsize+DT_USINT->bitsize+8;
+
+				printf("Creating DT '%s' bitsize %d\n",dt->name,dt->bitsize);
+
 				dt->subitems.push_back(
 					new DataType {
 						.name = subIndex000Str,
-						.type = USINTstr,
-						.bitsize = 8,
+						.type = DT_USINT->name,
+						.bitsize = DT_USINT->bitsize,
 						.subindex = 0 });
 				dt->subitems.push_back(
 					new DataType {
 						.name = "Elements",
 						.type = dtARR->name,
 						.bitsize = dtARR->bitsize,
-						.bitoffset = 16 });
+						.bitoffset = DT_USINT->bitsize+8 });
 				dt->arrayinfo = dtARR->arrayinfo;
 				dict->datatypes.push_back(dt);
 				return dt;
@@ -448,6 +449,46 @@ int encodeSII(const std::string& file, std::string output = "") {
 					}
 				}
 			}*/
+		}
+		auto findDT = [dict=dev->profile->dictionary](const char* dtname) {
+			if(NULL == dtname) return (DataType*)NULL;
+			for(DataType* d : dict->datatypes)
+				if(0 == strcmp(d->name,dtname)) return d;
+			return (DataType*)NULL;
+		};
+		for(DataType* datatype : dev->profile->dictionary->datatypes) {
+			if(!datatype->subitems.empty() || datatype->arrayinfo) {
+				uint32_t bitsize = 0;
+				if(datatype->arrayinfo && NULL != datatype->basetype) {
+					DataType* basedt = findDT(datatype->basetype);
+					if(NULL != basedt) {
+						bitsize = basedt->bitsize * datatype->arrayinfo->elements;
+					}
+				} else {
+					int siNo = 0;
+					for(DataType* dt : datatype->subitems) {
+						if(siNo == 0) {
+							bitsize += dt->bitsize;
+							bitsize += 8; // Padding
+						} else {
+							DataType* basedt = findDT(dt->type);
+							if(basedt->arrayinfo) {
+								DataType* basedt = findDT(dt->type);
+								if(NULL != basedt) {
+									bitsize += basedt->bitsize;
+								} else
+									printf("WARNING: DataType '%s' Couldn't find array basetype '%s'\n",datatype->name,dt->type);
+							} else
+								bitsize += dt->bitsize;
+						}
+						++siNo;
+					}
+				}
+				if(datatype->bitsize != bitsize) {
+					printf("WARNING: Bitsize of datatype '%s' seems off (calculated %d vs. parsed %d)\n",datatype->name,bitsize,datatype->bitsize);
+					printDataTypeVerbose(datatype);
+				}
+			}
 		}
 
 		if(verbose) {
