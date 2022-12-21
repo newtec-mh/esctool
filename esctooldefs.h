@@ -65,6 +65,7 @@ struct PdoEntry {
 	uint16_t bitlen = 0;
 	const char* datatype = NULL;
 	const char* name = NULL;
+	bool dependonslot = false; // For module PDOs
 };
 
 struct Pdo {
@@ -75,6 +76,7 @@ struct Pdo {
 	uint32_t index = 0;
 	const char* name = NULL;
 	std::list<PdoEntry*> entries;
+	bool dependonslot = false; // For module PDOs
 };
 
 struct ChannelInfo {
@@ -142,6 +144,27 @@ struct SyncUnit {
 	bool frame_repeat_support = false;
 };
 
+struct Slot {
+	uint8_t slotno = 0;
+	uint8_t slotpdoincrement = 0;
+	uint8_t slotindexincrement = 0;
+	std::list<uint8_t> moduleidents;
+};
+
+struct Slots {
+	uint8_t maxslotcount;
+	uint8_t slotpdoincrement = 0;
+	uint8_t slotindexincrement = 0;
+	std::list<Slot*> slots;
+};
+
+struct Module {
+	uint8_t ident;
+	const char* type;
+	std::list<Pdo*> txpdo;
+	std::list<Pdo*> rxpdo;
+};
+
 struct Device {
 	uint32_t product_code = 0x0;
 	uint32_t revision_no = 0x0;
@@ -159,6 +182,9 @@ struct Device {
 	std::list<Pdo*> rxpdo;
 	SyncUnit* syncunit = NULL;
 	Profile* profile = NULL;
+	std::list<Module*>* modules = NULL;
+	Slots* slots = NULL;
 };
+
 
 #endif /* ESCTOOLDEFS_H */

@@ -10,19 +10,20 @@
 
 uint32_t EC_SII_EEPROM_SIZE			(1024);
 
-void SII::encodeEEPROMBinary(uint32_t vendor_id, Device* dev, const bool encodepdo, 
-	const std::string& file, const std::string& output, const bool verbose)
+void SII::encodeEEPROMBinary(uint32_t vendor_id, Device* dev, const bool encodepdo,
+	const std::string& inputfile, const std::string& outputdir,
+	const std::string& output, const bool verbose)
 {
 	if(EC_SII_EEPROM_SIZE < dev->eepromsize)
 		EC_SII_EEPROM_SIZE = dev->eepromsize;
 
 	uint8_t* sii_eeprom = NULL;
-	printf("Encoding '%s' to '%s' EEPROM\n",file.c_str(),output.c_str());
+	printf("Encoding '%s' to '%s' EEPROM\n",inputfile.c_str(),output.c_str());
 	sii_eeprom = new uint8_t[EC_SII_EEPROM_SIZE];
 	memset(sii_eeprom,0,EC_SII_EEPROM_SIZE);
 
 	std::ofstream out;
-	out.open(output.c_str(), std::ios::out | std::ios::binary | std::ios::trunc);
+	out.open((outputdir + output).c_str(), std::ios::out | std::ios::binary | std::ios::trunc);
 	if(!out.fail()) {
 		// Pointer for writing
 		uint8_t* p = &sii_eeprom[0];

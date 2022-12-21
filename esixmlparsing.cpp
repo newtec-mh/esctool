@@ -62,6 +62,45 @@ void ESIXML::parseXMLGroup(const tinyxml2::XMLElement* xmlgroup) {
 	groups.push_back(group);
 }
 
+void ESIXML::parseXMLModule(const tinyxml2::XMLElement* xmlmodule) {
+	Module* module = new Module();
+
+	for (const tinyxml2::XMLElement* child = xmlmodule->FirstChildElement();
+		child != 0; child = child->NextSiblingElement())
+	{
+		if(0 == strcmp (child->Name(),"Type")) {
+			for (const tinyxml2::XMLAttribute* attr = child->FirstAttribute();
+				attr != 0; attr = attr->Next())
+			{
+				if(0 == strcmp(attr->Name(),"ModuleIdent")) {
+					module->ident = (hexdecstr2uint32(attr->Value()) & 0xFF);
+				} else
+				{
+					printf("Unhandled Module Attribute: '%s' = '%s'\n",attr->Name(),attr->Value());
+				}
+			}
+
+			module->type = child->GetText();
+			if(verbose) printf("Module/Type: '%s' (@ModuleIdent: '%d')\n",module->type,module->ident);
+		} else
+		if(0 == strcmp (child->Name(),"TxPdo")) {
+			parseXMLPdo(child,&(module->txpdo));
+		} else
+		if(0 == strcmp (child->Name(),"RxPdo")) {
+			parseXMLPdo(child,&(module->rxpdo));
+		} else
+		{
+			printf("Unhandled Module element '%s':'%s'\n",child->Name(),child->Value());
+		}
+	}
+	if(module->ident != 0) {
+		modules.push_back(module);
+	} else {
+		printf("\tModule has no ModuleIdent, skipping...\n");
+		delete module;
+	}
+}
+
 void ESIXML::parseXMLMailbox(const tinyxml2::XMLElement* xmlmailbox, Device* dev) {
 	Mailbox* mb = new Mailbox();
 	for (const tinyxml2::XMLAttribute* attr = xmlmailbox->FirstAttribute();
@@ -131,20 +170,20 @@ void ESIXML::parseXMLPdo(const tinyxml2::XMLElement* xmlpdo, std::list<Pdo*>* pd
 		if(0 == strcmp(attr->Name(),"Mandatory")) {
 			if(tinyxml2::XML_SUCCESS != attr->QueryBoolValue(&pdo->mandatory))
 				pdo->mandatory = (attr->IntValue() == 1) ? true : false;
-			if(very_verbose) printf("Device/%s/@Mandatory: %s ('%s')\n",xmlpdo->Name(),pdo->mandatory ? "yes" : "no",attr->Value());
+			if(very_verbose) printf("[Module/Device]/%s/@Mandatory: %s ('%s')\n",xmlpdo->Name(),pdo->mandatory ? "yes" : "no",attr->Value());
 		} else
 		if(0 == strcmp(attr->Name(),"Fixed")) {
 			if(tinyxml2::XML_SUCCESS != attr->QueryBoolValue(&pdo->fixed))
 				pdo->fixed = (attr->IntValue() == 1) ? true : false;
-			if(very_verbose) printf("Device/%s/@Fixed: %s ('%s')\n",xmlpdo->Name(),pdo->fixed ? "yes" : "no",attr->Value());
+			if(very_verbose) printf("[Module/Device]/%s/@Fixed: %s ('%s')\n",xmlpdo->Name(),pdo->fixed ? "yes" : "no",attr->Value());
 		} else
 		if(0 == strcmp(attr->Name(),"Sm")) {
 			pdo->syncmanager = attr->IntValue();
-			if(very_verbose) printf("Device/%s/@Sm: %d\n",xmlpdo->Name(),pdo->syncmanager);
+			if(very_verbose) printf("[Module/Device]/%s/@Sm: %d\n",xmlpdo->Name(),pdo->syncmanager);
 		} else
 		if(0 == strcmp(attr->Name(),"Su")) {
 			pdo->syncunit = attr->IntValue();
-			if(very_verbose) printf("Device/%s/@Su: '%d'\n",xmlpdo->Name(),pdo->syncunit);
+			if(very_verbose) printf("[Module/Device]/%s/@Su: '%d'\n",xmlpdo->Name(),pdo->syncunit);
 		} else
 		{
 			printf("Unhandled Device/%s Attribute: '%s' = '%s'\n",xmlpdo->Name(),attr->Name(),attr->Value());
@@ -156,6 +195,16 @@ void ESIXML::parseXMLPdo(const tinyxml2::XMLElement* xmlpdo, std::list<Pdo*>* pd
 		if(0 == strcmp(pdochild->Name(),"Index")) {
 			pdo->index = hexdecstr2uint32(pdochild->GetText());
 			if(verbose) printf("Device/%s/Index: '0x%.04X'\n",xmlpdo->Name(),pdo->index);
+			for (const tinyxml2::XMLAttribute* attr = pdochild->FirstAttribute();
+				attr != 0; attr = attr->Next())
+			{
+				if(0 == strcmp(attr->Name(),"DependOnSlot")) {
+					pdo->dependonslot = attr->BoolValue();
+					if(verbose) printf("[Module/Device]/%s/Index/@DependOnSlot: '%s'\n",xmlpdo->Name(),pdo->dependonslot ? "yes":"no");
+				} else {
+					printf("Unhandled [Module/Device]/%s/Index Attribute: '%s' = '%s'\n",xmlpdo->Name(),attr->Name(),attr->Value());
+				}
+			}
 		} else
 		if(0 == strcmp(pdochild->Name(),"Name")) {
 			pdo->name = pdochild->GetText();
@@ -173,7 +222,16 @@ void ESIXML::parseXMLPdo(const tinyxml2::XMLElement* xmlpdo, std::list<Pdo*>* pd
 				if(0 == strcmp(entrychild->Name(),"Index")) {
 					entry->index = hexdecstr2uint32(entrychild->GetText());
 					if(very_verbose) printf("Device/%s/Entry/Index: '0x%.04X'\n",xmlpdo->Name(),entry->index);
-				} else
+					for (const tinyxml2::XMLAttribute* attr = entrychild->FirstAttribute();
+						attr != 0; attr = attr->Next())
+					{
+						if(0 == strcmp(attr->Name(),"DependOnSlot")) {
+							entry->dependonslot = attr->BoolValue();
+							if(very_verbose) printf("[Module/Device]/%s/Index/Entry/@DependOnSlot: '%s'\n",xmlpdo->Name(),entry->dependonslot ? "yes":"no");
+						} else {
+							printf("Unhandled [Module/Device]/%s/Index/Entry Attribute: '%s' = '%s'\n",xmlpdo->Name(),attr->Name(),attr->Value());
+						}
+					}				} else
 				if(0 == strcmp(entrychild->Name(),"BitLen")) {
 					entry->bitlen = entrychild->IntText();
 					if(very_verbose) printf("Device/%s/Entry/BitLen: %d\n",xmlpdo->Name(),entry->bitlen);
@@ -514,6 +572,28 @@ void ESIXML::parseXMLDataType(const tinyxml2::XMLElement* xmldatatype, Dictionar
 	}
 }
 
+void ESIXML::parseXMLSlots(const tinyxml2::XMLElement* xmlslots, Device *dev) {
+	Slots* slots = new Slots;
+	for (const tinyxml2::XMLAttribute* attr = xmlslots->FirstAttribute();
+		attr != 0; attr = attr->Next())
+	{
+		if(0 == strcmp(attr->Name(),"MaxSlotCount")) {
+			slots->maxslotcount = hexdecstr2uint32(attr->Value());
+		} else
+		if(0 == strcmp(attr->Name(),"SlotPdoIncrement")) {
+			slots->slotpdoincrement = hexdecstr2uint32(attr->Value());
+		} else
+		if(0 == strcmp(attr->Name(),"SlotIndexIncrement")) {
+			slots->slotindexincrement = hexdecstr2uint32(attr->Value());
+		} else
+		{
+			printf("Unhandled Device Attribute: '%s' = '%s'\n",attr->Name(),attr->Value());
+		}
+	}
+	dev->slots = slots;
+	dev->modules = &modules;
+}
+
 void ESIXML::parseXMLProfile(const tinyxml2::XMLElement* xmlprofile, Device *dev) {
 	Profile* profile = new Profile;
 	dev->profile = profile;
@@ -718,6 +798,9 @@ void ESIXML::parseXMLDevice(const tinyxml2::XMLElement* xmldevice) {
 			}
 			dev->syncmanagers.push_back(sm);
 		} else
+		if(0 == strcmp(child->Name(),"Slots")) {
+			parseXMLSlots(child,dev);
+		} else
 		if(0 == strcmp (child->Name(),"Profile")) {
 			parseXMLProfile(child,dev);
 		} else
@@ -760,6 +843,9 @@ void ESIXML::parseXMLElement(const tinyxml2::XMLElement* element, void* data) {
 		} else
 		if(0 == strcmp(child->Name(),"Device")) {
 			parseXMLDevice(child);
+		} else
+		if(0 == strcmp(child->Name(),"Module")) {
+			parseXMLModule(child);
 		} else
 		if(0 == strcmp (child->Name(),"Vendor")) {
 			parseXMLVendor(child);

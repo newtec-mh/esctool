@@ -115,11 +115,12 @@ void printDataTypeVerbose (DataType* dt, unsigned int level = 0) {
 	if(level == 0) printf("-----------------\n");
 };
 
-int encodeSII(const std::string& file, std::string output = "") {
+int encodeSII(const std::string& inputfile, std::string output = "", const std::string& outdir = "") {
 	ESIXML esixml((verbose ? 0x1 : 0x0) + (very_verbose ? 0x2 : 0x0));
-	esixml.parse(file);
+	esixml.parse(inputfile);
 
 	if(!esixml.getDevices().empty()) {
+
 		// TODO check mandatory items
 		// Group Name
 		// Device Name
@@ -513,15 +514,19 @@ int encodeSII(const std::string& file, std::string output = "") {
 
 		// Write SII EEPROM file
 		if(!nosii) {
+			if(0 == output.size())
+				output = std::string(basename(inputfile.c_str())) + "_eeprom.bin";
+
 			SII::encodeEEPROMBinary(esixml.getVendorID(),
-				dev, encodepdo, file, output, very_verbose);
+				dev, encodepdo, inputfile, outdir,
+				output, very_verbose);
 		}
 
 		// Write slave stack object dictionary
 		if(writeobjectdict && NULL != dev->profile &&
 		NULL != dev->profile->dictionary)
 		{
-			SOESConfigWriter sscwriter(input_endianness_is_little);
+			SOESConfigWriter sscwriter(outdir,input_endianness_is_little);
 			sscwriter.writeSSCFiles(dev);
 		}
 
@@ -543,6 +548,8 @@ int main(int argc, char* argv[])
 	bool decode = false;
 	std::string inputfile = "";
 	std::string outputfile = "";
+	std::string outdir = "";
+
 	for(int i = 0; i < argc; ++i) {
 		if(0 == strcmp(argv[i],"--input") ||
 		   0 == strcmp(argv[i],"-i"))
@@ -588,6 +595,23 @@ int main(int argc, char* argv[])
 		{
 			writeobjectdict = true;
 		} else
+		if(0 == strcmp(argv[i],"--output-directory") ||
+		   0 == strcmp(argv[i],"-odir"))
+		{
+			outdir = argv[++i];
+			printf("Generating files to '%s'\n",outdir.c_str());
+			if(outdir.at(outdir.size()-1) != '/') outdir += '/';
+			struct stat st;
+			if(stat(outdir.c_str(),&st) == 0) {
+				if(!S_ISDIR(st.st_mode)) {
+					printf("'%s' is not a directory\n",outdir.c_str());
+					return -EINVAL;
+				}
+			} else {
+				printf("Created empty directory '%s'\n",outdir.c_str());
+				mkdir(outdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+			}
+		} else
 		if(0 == strcmp(argv[i],"--output") ||
 		   0 == strcmp(argv[i],"-o"))
 		{
@@ -598,7 +622,6 @@ int main(int argc, char* argv[])
 			encode = false;
 		}
 	}
-
 	if(encode && nosii && !writeobjectdict) {
 		printf("Assuming Object Dictionary should be generated...\n");
 		writeobjectdict = true;
@@ -611,7 +634,7 @@ int main(int argc, char* argv[])
 	if(decode) {
 		SII::decodeEEPROMBinary(inputfile,verbose);
 	} else if(encode) {
-		return encodeSII(inputfile,outputfile);
+		return encodeSII(inputfile,outputfile,outdir);
 	}
 	return 0;
 }
