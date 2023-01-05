@@ -347,13 +347,24 @@ int encodeSII(const std::string& inputfile, std::string output = "", const std::
 			}
 
 			// SyncManager mappings 0x1C10-0x1C20
+			// Add PDOs to each sync manager mapping, and create each SM's respective
+			// objects
 			std::vector<std::list<Pdo*> > syncManagerMappings = {{},{},{},{}};
+
+			// TODO: If the device has slots, with predefined modules, with fixed
+			// PDOs, we should go through these and add them
+
+			// Go through the device PDOs
 			for(auto pdoList : { dev->rxpdo, dev->txpdo }) {
 				for(Pdo* pdo : pdoList)
 					syncManagerMappings[pdo->syncmanager].push_back(pdo);
 			}
+
 			uint8_t smno = 0;
 			for(auto pdoList : syncManagerMappings) {
+
+				if(hasObject(0x1C10 + smno)) continue;
+
 				Object* mappingObject = new Object;
 				mappingObject->index = 0x1C10 + smno;
 				DataType* DTmapping = createArrayDT(mappingObject->index,pdoList.size(),DT_UINT);
@@ -371,6 +382,38 @@ int encodeSII(const std::string& inputfile, std::string output = "", const std::
 						.datatype = DT_USINT,
 						.defaultdata = createStr()});
 
+				// The user will have adjust the maxsubindex in the SSC code
+				// to deal with which modules are present and reflect
+				// this properly
+				if(dev->slots && (2 == smno || 3 == smno)) {
+					// TODO: here we should really check through the slots to check for fixed PDOs
+					ObjectFlags* flags = new ObjectFlags;
+					flags->access = new ObjectAccess;
+					snprintf(s,L,"%s","rw");
+					flags->access->access = createStr();
+					snprintf(s,L,"%s","PreOP");
+					flags->access->writerestrictions = createStr();
+					snprintf(s,L,"%s","Mapped object");
+					const char* name = createStr();
+
+					// We're now running with dynamic PDOs so the max subindex should be writeable
+					mappingObject->subitems.front()->flags = flags;
+
+					for(uint8_t j = 0; j < dev->slots->maxslotcount; ++j) {
+						Object* mappedObj = new Object;
+						mappedObj->index = mappingObject->index;
+						mappedObj->datatype = DT_UINT;
+						snprintf(s,L,"%.04X",0x0);
+						mappedObj->defaultdata = createStr();
+						mappedObj->name = name;
+						mappedObj->bitoffset = mappingObject->bitsize;
+						mappingObject->bitsize += DT_UINT->bitsize;
+						mappedObj->bitsize = DT_UINT->bitsize;
+						mappedObj->flags = flags;
+						mappingObject->subitems.push_back(mappedObj);
+					}
+				}
+
 				for(auto pdo : pdoList) {
 					Object* mappedObj = new Object;
 					mappedObj->index = mappingObject->index;
@@ -387,71 +430,15 @@ int encodeSII(const std::string& inputfile, std::string output = "", const std::
 				dict->objects.push_back(mappingObject);
 				++smno;
 			}
-
-			// Generate Objects from PDOs
-/*			for(auto pdoList : { dev->rxpdo, dev->txpdo }) {
-				for(Pdo* pdo : pdoList) {
-					Object* obj = NULL;
-					printf("PDO Index: 0x%.04X has %lu entries\n",pdo->index,pdo->entries.size());
-					for(PdoEntry* entry : pdo->entries) {
-						if(hasObject(entry->index)) continue;
-						printf("Entry: '%s', index: 0x%.04X, subindex: %u, datatype: '%s'\n",entry->name,entry->index,entry->subindex,entry->datatype);
-						if(NULL == obj || obj->index != entry->index) {
-							if(NULL != obj) {
-								// bitsize, subindex000 and bitlength
-								snprintf(s,L,"%.02lu",obj->subitems.size());
-
-								obj->subitems.push_front(new Object {
-									.index = obj->index,
-									.name = subIndex000Str,
-									.datatype = DT_USINT,
-									.defaultdata = createStr()});
-
-								dict->objects.push_back(obj);
-							}
-							obj = new Object;
-							obj->index = entry->index;
-							obj->name = entry->name;
-							obj->bitsize = 16; // SubIndex00 + padding
-						}
-
-						DataType* dt = NULL;
-						for(DataType* d : dict->datatypes) {
-							if(0 == strcmp(d->name,entry->datatype)) {
-								dt = d;
-								break;
-							}
-						}
-						if(NULL == dt) printf("\n\nWARNING: DataType for entry '%s' (0x%.04X) is NULL (type: '%s')!\n\n",entry->name,entry->index,entry->datatype);
-						else {
-							obj->subitems.push_back(new Object {
-								.index = entry->index,
-								.name = entry->name,
-								.datatype = dt,
-								.bitsize = dt->bitsize,
-								.bitoffset = obj->bitsize
-							});
-							obj->bitsize += dt->bitsize;
-						}
-					}
-					if(NULL != obj) {
-						snprintf(s,L,"%.02lu",obj->subitems.size());
-						obj->subitems.push_front(new Object {
-							.index = obj->index,
-							.name = subIndex000Str,
-							.datatype = DT_USINT,
-							.defaultdata = createStr()});
-						dict->objects.push_back(obj);
-					}
-				}
-			}*/
 		}
+
 		auto findDT = [dict=dev->profile->dictionary](const char* dtname) {
 			if(NULL == dtname) return (DataType*)NULL;
 			for(DataType* d : dict->datatypes)
 				if(0 == strcmp(d->name,dtname)) return d;
 			return (DataType*)NULL;
 		};
+
 		for(DataType* datatype : dev->profile->dictionary->datatypes) {
 			if(!datatype->subitems.empty() || datatype->arrayinfo) {
 				uint32_t bitsize = 0;
