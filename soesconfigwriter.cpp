@@ -511,42 +511,42 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 					objref = true;
 				} else  // capitalization of all these strings?
 				{
-				if(0 == strncmp(type,BOOLstr,4) || 0 == strcmp(type,BITstr)) {
-					out << "DTYPE_BOOLEAN";
-					bitsize = 1;
-				} else
-				if(0 == strcmp(type,SINTstr)) {
-					out << "DTYPE_INTEGER8";
-					bitsize = 8;
-				} else
-				if(0 == strcmp(type,INTstr)) {
-					out << "DTYPE_INTEGER16";
-					bitsize = 16;
-				} else
-				if(0 == strcmp(type,DINTstr)) {
-					out << "DTYPE_INTEGER32";
-					bitsize = 32;
-				} else
-				if(0 == strcmp(type,USINTstr)) {
-					out << "DTYPE_UNSIGNED8";
-					bitsize = 8;
-				} else
-				if(0 == strcmp(type,UINTstr)) {
-					out << "DTYPE_UNSIGNED16";
-					bitsize = 16;
-				} else
-				if(0 == strcmp(type,UDINTstr)) {
-					out << "DTYPE_UNSIGNED32";
-					bitsize = 32;
-				} else
-				{ // TODO handle more types?
-					printf("\033[0;31mWARNING:\033[0m Unhandled Datatype '%s'\n",obj->type);
-					out << "DTYPE_UNSIGNED32"; // Default
-					bitsize = 32;
-				}
-				out << ", ";
+					if(0 == strncmp(type,BOOLstr,4) || 0 == strcmp(type,BITstr)) {
+						out << "DTYPE_BOOLEAN";
+						bitsize = 1;
+					} else
+					if(0 == strcmp(type,SINTstr)) {
+						out << "DTYPE_INTEGER8";
+						bitsize = 8;
+					} else
+					if(0 == strcmp(type,INTstr)) {
+						out << "DTYPE_INTEGER16";
+						bitsize = 16;
+					} else
+					if(0 == strcmp(type,DINTstr)) {
+						out << "DTYPE_INTEGER32";
+						bitsize = 32;
+					} else
+					if(0 == strcmp(type,USINTstr)) {
+						out << "DTYPE_UNSIGNED8";
+						bitsize = 8;
+					} else
+					if(0 == strcmp(type,UINTstr)) {
+						out << "DTYPE_UNSIGNED16";
+						bitsize = 16;
+					} else
+					if(0 == strcmp(type,UDINTstr)) {
+						out << "DTYPE_UNSIGNED32";
+						bitsize = 32;
+					} else
+					{ // TODO handle more types?
+						printf("\033[0;31mWARNING:\033[0m Unhandled Datatype '%s'\n",obj->type);
+						out << "DTYPE_UNSIGNED32"; // Default
+						bitsize = 32;
+					}
+					out << ", ";
 
-				out << std::dec << (bitsize == 0 ? obj->bitsize : bitsize);
+					out << std::dec << (bitsize == 0 ? obj->bitsize : bitsize);
 				}
 				out << ", ";
 
