@@ -101,8 +101,16 @@ void SII::encodeEEPROMBinary(uint32_t vendor_id, Device* dev, const bool encodep
 
 		// Default: two strings, device group name first, then device name
 		std::list<const char*> strings;
-		strings.push_back(dev->group->type);
-		strings.push_back(dev->name);
+
+		if(NULL == dev->group) {
+			printf("Device group is NULL!\n");
+			strings.push_back("(empty-group-name)");
+		} else strings.push_back(dev->group->type);
+
+		if(NULL == dev->name) {
+			printf("Device name is NULL!\n");
+			strings.push_back("(empty-device-name)");
+		} else strings.push_back(dev->name);
 
 		// First category word size (Word 0x041)
 		// +1 for the number of strings and +1 for the

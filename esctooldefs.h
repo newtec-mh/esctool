@@ -4,6 +4,7 @@
 #include <list>
 #include <vector>
 #include "esidefs.h"
+#include <cstddef>
 
 struct Group {
 	const char* name = NULL;
