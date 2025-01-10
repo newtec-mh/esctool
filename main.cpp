@@ -58,6 +58,8 @@ void printUsage(const char* name) {
 	printf("\t --nosii/-n : Don't generate SII EEPROM binary (only for !--decode)\n");
 	printf("\t --dictionary/-d : Generate SSC object dictionary (default if --nosii and !--decode)\n");
 	printf("\t --encodepdo/-ep : Encode PDOs to SII EEPROM\n");
+	printf("\t --output-directory/-odir : Specify output directory (created if non-existant)\n");
+	printf("\t --output/-o : Specify output SII filename\n");
 	printf("\n");
 }
 
@@ -65,6 +67,13 @@ void printObject (Object* o, unsigned int level = 0) {
 //	printf("Obj: Index: 0x%.04X, Name: '%s'\n",(NULL != o->index ? EC_SII_HexToUint32(o->index) : 0),o->name);
 	for(unsigned int l = 0; l < level; ++l) printf("\t");
 	printf("Obj: Index: 0x%.04X, Name: '%s', DefaultData: '%s', BitSize: '%u'\n",o->index,o->name,o->defaultdata,o->bitsize);
+	if(very_verbose && o->flags) {
+		for(unsigned int l = 0; l < level; ++l) printf("\t");
+		printf("Flags: '%s'\n",o->flags->category ? o->flags->category : "(No category)");
+		if(o->flags->access) {
+			if("Access: '%s'\n",o->flags->access->access ? o->flags->access->access : "(none)");
+		} else printf("No access\n");
+	}
 	for(Object* si : o->subitems) printObject(si,level+1);
 };
 
@@ -133,26 +142,31 @@ int encodeSII(const std::string& inputfile, std::string output = "", const std::
 			printf("Verifying and/or creating minimal object dictionary...\n");
 
 			if(!dev->profile) dev->profile = new Profile;
-			if(!dev->profile->dictionary) dev->profile->dictionary = new Dictionary;
+			if(!dev->profile->dictionary) {
+				printf("\033[0;31mWARNING:\033[0m Creating empty dictionary\n");
+				dev->profile->dictionary = new Dictionary;
+			}
 
 			Dictionary* dict = dev->profile->dictionary;
 			auto findDT = [&dict](const char* dtname, uint32_t bitsize) {
 				for(DataType* d : dict->datatypes)
 					if(0 == strcmp(d->name,dtname)) return d;
-				if(verbose) printf("Creating DataType '%s' (%d bits)\n",dtname,bitsize);
+				printf("Creating DataType '%s' (%d bits)\n",dtname,bitsize);
 				dict->datatypes.push_back(new DataType {
 					.name = dtname,
 					.bitsize = bitsize
 				});
 				return dict->datatypes.back();
 			};
+
 			DataType* DT_UDINT = findDT(UDINTstr,32);
 			DataType* DT_UINT = findDT(UINTstr,16);
 			DataType* DT_USINT = findDT(USINTstr,8);
 			DataType* DT_DINT = findDT(DINTstr,32);
 			DataType* DT_INT = findDT(INTstr,16);
 			DataType* DT_SINT = findDT(SINTstr,8);
-
+			DataType* DT_ULINT = findDT(ULINTstr,64);
+			
 			size_t L = 32;
 			char s[L];
 
@@ -210,10 +224,22 @@ int encodeSII(const std::string& inputfile, std::string output = "", const std::
 					pdo_obj->name = createStr();
 					uint32_t rxsize_bytes = 0;
 
-					DataType* dt = new DataType;
+					DataType* dt = NULL;
 					snprintf(s,L,"DT%.04X",pdo->index);
-					dt->name = createStr();
 
+					for(DataType* d : dict->datatypes) {
+						if(0 == strcmp(d->name,s)) {
+							if(verbose) printf("Found datatype '%s' in dictionary!\n",s);
+							dt = d;
+							break;
+						}
+					}
+					if(dt != NULL) continue;
+					printf("Generating datatype '%s'\n",s);
+
+					dt = new DataType;
+					dt->name = createStr();
+					printf("%s\n",dt->name);
 					pdo_obj->datatype = dt;
 
 					if(pdo->entries.size() > 0) {
@@ -271,8 +297,15 @@ int encodeSII(const std::string& inputfile, std::string output = "", const std::
 			}
 
 			auto createArrayDT = [&dict,&createStr,L,&s,&DT_USINT](uint16_t index, const int entries, DataType* entryDT) {
-				DataType* dtARR = new DataType;
 				snprintf(s,L,"DT%.04XARR",index);
+				for(DataType* d : dict->datatypes) {
+					if(0 == strcmp(d->name,s)) {
+						if(verbose) printf("Found datatype '%s' in dictionary!\n",s);
+						return d;
+					}
+				}
+				printf("Generating datatype '%s'\n",s);
+				DataType* dtARR = new DataType;
 				dtARR->name = createStr();
 				dtARR->basetype = entryDT->name;
 				dtARR->bitsize = entries*(entryDT->bitsize);
@@ -436,6 +469,7 @@ int encodeSII(const std::string& inputfile, std::string output = "", const std::
 			if(NULL == dtname) return (DataType*)NULL;
 			for(DataType* d : dict->datatypes)
 				if(0 == strcmp(d->name,dtname)) return d;
+			printf("findDT: Could not find datatype for '%s'\n",dtname);
 			return (DataType*)NULL;
 		};
 
@@ -455,12 +489,12 @@ int encodeSII(const std::string& inputfile, std::string output = "", const std::
 							bitsize += 8; // Padding
 						} else {
 							DataType* basedt = findDT(dt->type);
-							if(basedt->arrayinfo) {
+							if(basedt && basedt->arrayinfo) {
 								DataType* basedt = findDT(dt->type);
 								if(NULL != basedt) {
 									bitsize += basedt->bitsize;
 								} else
-									printf("WARNING: DataType '%s' Couldn't find array basetype '%s'\n",datatype->name,dt->type);
+									printf("\033[0;31mWARNING:\033[0m DataType '%s' Could not find array basetype '%s'\n",datatype->name,dt->type);
 							} else
 								bitsize += dt->bitsize;
 						}
@@ -586,8 +620,19 @@ int main(int argc, char* argv[])
 		   0 == strcmp(argv[i],"-odir"))
 		{
 			outdir = argv[++i];
-			printf("Generating files to '%s'\n",outdir.c_str());
 			if(outdir.at(outdir.size()-1) != '/') outdir += '/';
+			if(outdir.at(0) != '/') {
+				char cwd[PATH_MAX];
+				if (getcwd(cwd, sizeof(cwd)) != NULL) {
+					std::string outdir2(cwd);
+					outdir2 += "/" + outdir;
+					outdir = outdir2;
+				} else {
+					perror("getcwd() error");
+					return errno;
+				}
+			}
+			printf("Generating files to '%s'\n",outdir.c_str());
 			struct stat st;
 			if(stat(outdir.c_str(),&st) == 0) {
 				if(!S_ISDIR(st.st_mode)) {
@@ -595,8 +640,11 @@ int main(int argc, char* argv[])
 					return -EINVAL;
 				}
 			} else {
-				printf("Created empty directory '%s'\n",outdir.c_str());
-				mkdir(outdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+				printf("Creating empty directory '%s'\n",outdir.c_str());
+				if(mkdir(outdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)) {
+					printf("Failed creating '%s' (%d)\n",outdir.c_str(),errno);
+					return errno;
+				}
 			}
 		} else
 		if(0 == strcmp(argv[i],"--output") ||

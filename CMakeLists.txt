@@ -6,6 +6,14 @@ set (SLAVECONFIGTOOL_VERSION_MAJOR 0)
 set (SLAVECONFIGTOOL_VERSION_MINOR 1)
 set (SLAVECONFIGTOOL_VERSION_PATCH 0)
 
+set(GTK_UI no CACHE STRING "Compile UI version")
+set_property(CACHE GTK_UI PROPERTY STRINGS yes no)
+
+if(${GTK_UI} STREQUAL "yes")
+	message(STATUS "GTK based UI enabled")
+	add_definitions(-DGTK_UI)
+endif()
+
 # Include paths
 include_directories(
   ${SLAVECONFIGTOOL_SOURCE_DIR}

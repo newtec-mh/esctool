@@ -25,6 +25,13 @@ std::string CNameify(const char* str, bool capitalize = false) {
 	return r;
 };
 
+void printFlags (uint16_t index, uint8_t subindex, const ObjectFlags* f) {
+	printf("0x%.4X:%.2X Flags: '%s'\n",index,subindex,f->category ? f->category : "(No category)");
+	if(f->access) {
+		if("Access: '%s'\n",f->access->access ? f->access->access : "(none)");
+	}
+};
+
 SOESConfigWriter::SOESConfigWriter(const std::string& outdir, bool input_endianness_is_little) :
 	m_outputdir(outdir),
 	m_input_endianness_is_little(input_endianness_is_little) {};
@@ -190,29 +197,43 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 
 	auto findDT = [dict=dev->profile->dictionary](const char* dtname) {
 		if(NULL == dtname) return (DataType*)NULL;
-		for(DataType* d : dict->datatypes)
+		for(DataType* d : dict->datatypes) {
+//			if(0 == strcmp(UDINTstr,dtname)) { printf("CHecking UDINT vs '%s'\n",d->name); }
 			if(0 == strcmp(d->name,dtname)) return d;
+		}
 		return (DataType*)NULL;
 	};
 
 	auto deduceDT = [dict=dev->profile->dictionary,&findDT](Object* obj, const int subitemNo) {
+//		printf("DeduceDT: %.04X:%.02X type: '%s', datatype: '%s'\n",
+//			obj->index,subitemNo,obj->type?obj->type:"(null)",obj->datatype?obj->datatype->type:"(null)");
 		const char* type = NULL;
 		DataType* dt = obj->datatype ? obj->datatype : findDT(obj->type);
+		if(dt != NULL) type = dt->type;
+
 		if(dt != NULL && (dt->subitems.size() > 1 && dt->subitems[1]->subindex == 0))
 		{
+//			printf("DeduceDT: %.04X:%.02X is an array\n", obj->index,subitemNo);
 			// DataType is an array
 			dt = findDT(dt->subitems[1]->type);
 			if(NULL != dt && dt->arrayinfo) {
 				type = dt->basetype;
+				dt = findDT(type);
+				if(!dt) {
+					printf("\033[0;31mWARNING:\033[0m DataType of object '0x%.04X' subitem '%u' seems to be array, but basetype DataType was not found\n",obj->index,subitemNo);
+				}
 			} else {
 				printf("\033[0;31mWARNING:\033[0m DataType of object '0x%.04X' subitem '%u' seems to be array, but no arrayinfo found\n",obj->index,subitemNo);
 			}
 		}
 
-		if(NULL == dt) dt = findDT(obj->type != NULL ? obj->type : (obj->parent ? obj->parent->type : NULL));
+		if(NULL == dt) {
+			dt = findDT(obj->type != NULL ? obj->type : (obj->parent ? obj->parent->type : NULL));
+		}
 		if(NULL == type && NULL != dt) {
 			try {
-				type = dt->subitems.at(subitemNo)->type;
+				dt = dt->subitems.at(subitemNo);
+				type = dt->type;
 			} catch(const std::out_of_range&) {
 				type = NULL;
 			}
@@ -222,7 +243,7 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 			else type = dt->type;
 		}
 		if(NULL == type) type = obj->type; // Fallback
-		return type;
+		return dt;
 	};
 
 	auto getCType = [](const char* type) {
@@ -246,6 +267,9 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 		} else
 		if(0 == strcmp(type,UDINTstr)) {
 			return "uint32_t";
+		}
+		if(0 == strcmp(type,ULINTstr)) {
+			return "uint64_t";
 		}
 		printf("Warning: Unable to find C-type for '%s'\n",type);
 		return (const char*)NULL;
@@ -293,7 +317,8 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 							++subitem;
 							continue;
 						}
-						const char* type = deduceDT(si,subitem);
+						DataType* dt = deduceDT(si,subitem);
+						const char* type = dt->type;
 						if(NULL == type) {
 							printf("WARNING: Could not determine C-datatype for '%s':'%s' ('%s')\n",o->name,si->name,(si->datatype?si->datatype->name:o->type));
 							continue;
@@ -488,13 +513,19 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 					<< std::setw(2)
 					<< subitem
 					<< ", ";
+
 				uint16_t index = obj->index & 0xFFFF;
-				const char* type = deduceDT(obj,subitem);
-				if(subitem == 0) type = USINTstr; // TODO: FIXME!
-				DataType* datatype = findDT(type);
+
+				DataType* datatype = obj->datatype ? obj->datatype : deduceDT(obj,subitem);
+
+				const char* type = datatype ? datatype->type ? datatype->type : datatype->name : NULL;
+
+				if(!datatype && subitem == 0) type = USINTstr; // TODO: FIXME?
 
 				const ObjectFlags* flags = obj->flags ? obj->flags : (datatype ? datatype->flags : NULL);
+
 				uint32_t bitsize = obj->bitsize ? obj->bitsize : (datatype ? datatype->bitsize : 0);
+
 				if(NULL == type) {
 					printf("\033[0;31mWARNING:\033[0m DataType of object '0x%.04X' subitem '%u' is \033[0;33mNULL\033[0m\n\n\n",obj->index,subitem);
 				} else
@@ -539,8 +570,13 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 						out << "DTYPE_UNSIGNED32";
 						bitsize = 32;
 					} else
+					if(0 == strcmp(type,ULINTstr)) {
+						out << "DTYPE_UNSIGNED64";
+						bitsize = 64;
+					} else
 					{ // TODO handle more types?
-						printf("\033[0;31mWARNING:\033[0m Unhandled Datatype '%s'\n",obj->type);
+						printf("\033[0;31mWARNING:\033[0m %.04X:%.02X Unhandled Datatype '%s'\n",
+							obj->index,subitem,obj->type);
 						out << "DTYPE_UNSIGNED32"; // Default
 						bitsize = 32;
 					}
@@ -559,7 +595,9 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 				} else
 				if(0 == strcmp(flags->access->access,"rw")) {
 					out << "ATYPE_RW";
-					if(0 == strcmp(flags->access->writerestrictions,"PreOP")) {
+					if(flags->access->writerestrictions &&
+						0 == strcmp(flags->access->writerestrictions,"PreOP"))
+					{
 						out << "pre";
 					}
 				}
@@ -676,6 +714,7 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 				}
 				out << " };\n\n";
 			}
+
 			out << "const _objectlist objlist_end = { 0xFFFF, 0xFF, 0xFF, 0xFF, NULL, NULL };\n";
 			out << "\n";
 			out << "const _objectlist SDOobjects[] = {\n";

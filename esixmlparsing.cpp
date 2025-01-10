@@ -231,7 +231,8 @@ void ESIXML::parseXMLPdo(const tinyxml2::XMLElement* xmlpdo, std::list<Pdo*>* pd
 						} else {
 							printf("Unhandled [Module/Device]/%s/Index/Entry Attribute: '%s' = '%s'\n",xmlpdo->Name(),attr->Name(),attr->Value());
 						}
-					}				} else
+					}
+				} else
 				if(0 == strcmp(entrychild->Name(),"BitLen")) {
 					entry->bitlen = entrychild->IntText();
 					if(very_verbose) printf("Device/%s/Entry/BitLen: %d\n",xmlpdo->Name(),entry->bitlen);

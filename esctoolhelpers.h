@@ -14,6 +14,7 @@ const char UINTstr[]		= "UINT";
 const char UDINTstr[]		= "UDINT";
 const char REALstr[]		= "REAL";
 const char STRINGstr[]		= "STRING";
+const char ULINTstr[]		= "ULINT";
 
 const char devTypeStr[]		= "Device type";
 const char devNameStr[]		= "Device name";
