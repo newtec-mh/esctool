@@ -1,0 +1,149 @@
+body {
+	background-color: dimgray;
+	font-size: 16px;
+	font-family: sans-serif;
+	padding-left: 0px;
+	padding-right: 0px;
+	padding-top: 2em;
+}
+
+div {
+	box-sizing: border-box;
+}
+
+input {
+	margin-right: 0.2em;
+}
+
+select {
+	margin-right: 0.2em;
+}
+
+.esctool-control {
+	width: 100%;
+	position: fixed;
+	top: 0px;
+	left: 0px;
+	border: solid 1px black;
+	background-color: white;
+	color: black;
+	font-weight: bold;
+	margin: 0px;
+	padding: 0.2em;
+}
+
+.control-button {
+	font-size: 20px;
+	font-weight: bold;
+}
+
+.save-button {
+	float: left;
+}
+
+.export-button {
+	float: left;
+}
+
+.clear-button {
+	float: right;
+}
+
+.esctool-console {
+	position: fixed;
+	bottom: 0px;
+	width: 100%;
+	left: 0px;
+	border: solid 1px black;
+	background-color: white;
+	color: black;
+	font-weight: bold;
+	line-height: 1.5em;
+	margin: 0px;
+	padding: 0.5em;
+}
+
+.top-div {
+	width: 100%;
+	border: solid 0.1em lightgray;
+	border-radius: 0.2em;
+	background-color: gray;
+	margin-top: 0.2em;
+	padding: 0.2em;
+	display: block;
+}
+
+.top-div-label {
+	display: block;
+	font-weight: bold;
+	margin-bottom: 0.4em;
+}
+
+.spacer-1em {
+	display:inline-block;
+	width: 1em;
+}
+
+.spacer-2em {
+	display:inline-block;
+	width: 2em;
+}
+
+.label-div {
+	display: inline-block;
+	margin-right: 0.2em;
+}
+
+.group-delete-button {
+	width: 2em;
+}
+
+.device-delete-button {
+	width: 2em;
+}
+
+.object-add-button {
+	float: right;
+	margin: 0.1em;
+	width: 2em;
+}
+
+.object-div {
+	border-radius: 0.3em;
+	padding: 0.2em;
+	margin-bottom: 0.2em;
+	background-color: darkgray;
+}
+
+.object-delete-button {
+	float: right;
+	width: 2em;
+}
+
+.object-address-input {
+	width: 4em;
+}
+
+.object-type-selector {
+	width: 6em;
+}
+
+.object-subindex-input {
+	width: 3em;
+}
+
+.object-datatype-input {
+	width: 6em;
+}
+
+.object-default-value-input {
+	width: 6em;
+}
+
+.subindex-add-button {
+	width: 2em;
+}
+
+.subindex-delete-button {
+	width: 2em;
+}

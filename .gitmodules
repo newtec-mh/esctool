@@ -1,3 +1,9 @@
 [submodule "tinyxml2"]
 	path = tinyxml2
 	url = https://github.com/leethomason/tinyxml2.git
+[submodule "tinyhttp"]
+	path = tinyhttp
+	url = https://github.com/kissbeni/tinyhttp
+[submodule "MiniJson"]
+	path = MiniJson
+	url = https://github.com/zsmj2017/MiniJson

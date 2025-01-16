@@ -18,6 +18,9 @@ endif()
 include_directories(
   ${SLAVECONFIGTOOL_SOURCE_DIR}
   ${SLAVECONFIGTOOL_SOURCE_DIR}/tinyxml2
+  ${SLAVECONFIGTOOL_SOURCE_DIR}/tinyhttp
+  ${SLAVECONFIGTOOL_SOURCE_DIR}/tinyhttp/htcc
+  ${SLAVECONFIGTOOL_SOURCE_DIR}/MiniJson/Source/include
   )
 
 set(CMAKE_CXX_FLAGS "-O0 -ggdb")
@@ -28,6 +31,12 @@ include(${CMAKE_SYSTEM_NAME} OPTIONAL)
 message (STATUS "Building for ${CMAKE_SYSTEM_NAME}")
 
 add_executable(esctool
+  MiniJson/Source/src/json.cpp
+  MiniJson/Source/src/jsonValue.cpp
+  MiniJson/Source/src/parse.cpp
+  tinyhttp/websock.cpp
+  tinyhttp/http.cpp
+  tinyhttp/http.hpp
   tinyxml2/tinyxml2.cpp
   tinyxml2/tinyxml2.h
   esctoolhelpers.cpp

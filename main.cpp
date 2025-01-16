@@ -31,6 +31,8 @@
 
 #include "tinyxml2/tinyxml2.h"
 
+#include "tinyhttp/http.hpp"
+
 #include "esctool.h"
 #include "esidefs.h"
 #include "esctooldefs.h"
@@ -559,7 +561,9 @@ int encodeSII(const std::string& inputfile, std::string output = "", const std::
 	return 0;
 }
 
+void encodeJSON(const auto& jsonObj) {
 
+}
 
 int main(int argc, char* argv[])
 {
@@ -567,6 +571,7 @@ int main(int argc, char* argv[])
 	// We by default assume we're encoding a XML slave specification
 	bool encode = true;
 	bool decode = false;
+	bool daemonize = false;
 	std::string inputfile = "";
 	std::string outputfile = "";
 	std::string outdir = "";
@@ -655,6 +660,12 @@ int main(int argc, char* argv[])
 		if(0 == strcmp(argv[i],"--decode")) {
 			decode = true;
 			encode = false;
+		} else
+		if(0 == strcmp(argv[i],"--daemonize") ||
+		   0 == strcmp(argv[i],"-D"))
+		{
+			printf("Daemonizing...\n");
+			daemonize = true;
 		}
 	}
 	if(encode && nosii && !writeobjectdict) {
@@ -662,14 +673,77 @@ int main(int argc, char* argv[])
 		writeobjectdict = true;
 	}
 	printf("\n");
-	if("" == inputfile) {
-		printUsage(argv[0]);
-		return -EINVAL;
+
+	if(daemonize) {
+		HttpServer server;
+		server.when("/")
+			// Answer with a specific file
+			->serveFile("./webui/index.html");
+		server.whenMatching("/[^/]+")
+			// Answer with a file from a folder
+			->serveFromFolder("./webui/");
+
+		server.when("/setup")
+			// Handle when data is posted here (POST)
+			->posted([](const HttpRequest& req) {
+				const auto& data = req.json();
+
+				// If the parsed data is not an object, ignore
+				if (!data.isObject())
+				return HttpResponse{400, "text/plain", "Invalid JSON"};
+
+//				const auto& jNumber = data["value"];
+
+				// Check if the data with the key "value" is a number
+//				if (!jNumber.isNumber())
+
+//				return HttpResponse{400, "text/plain", "Value is not a number"};
+				
+				// Set the number by parsing the raw request body
+//				myNumber = static_cast<int>(jNumber.toDouble());
+				return HttpResponse{200};
+			})
+			// Handle when data is requested from here (GET)
+			->requested([](const HttpRequest& req) {
+				// Create a new JSON object
+				miniJson::Json::_object obj;
+
+//				// Add a new key "value" to it, set to myNumber
+//				obj["value"] = myNumber;
+
+				// Respond with json
+				return HttpResponse{200, obj};
+			});
+
+		server.when("/export")
+			// Handle when data is posted here (POST)
+			->posted([](const HttpRequest& req) {
+				const auto& data = req.json();
+
+				// If the parsed data is not an object, ignore
+				if (!data.isObject())
+				return HttpResponse{400, "text/plain", "Invalid JSON"};
+
+				encodeJSON(data);
+
+				// Export to XML and encodeSII
+				return HttpResponse{200};
+			});
+
+		printf("Starting server on 5001\n");
+		server.startListening(5001);
+		printf("Done...\n");
+	} else {
+		if("" == inputfile) {
+			printUsage(argv[0]);
+			return -EINVAL;
+		}
+		if(decode) {
+			SII::decodeEEPROMBinary(inputfile,verbose);
+		} else if(encode) {
+			return encodeSII(inputfile,outputfile,outdir);
+		}
 	}
-	if(decode) {
-		SII::decodeEEPROMBinary(inputfile,verbose);
-	} else if(encode) {
-		return encodeSII(inputfile,outputfile,outdir);
-	}
+
 	return 0;
 }
