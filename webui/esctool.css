@@ -108,6 +108,14 @@ select {
 	width: 2em;
 }
 
+#dv-eeprom-bytesize {
+	width: 4em;
+}
+
+.config-data-input {
+	width: 4em;
+}
+
 .object-div {
 	border-radius: 0.3em;
 	padding: 0.2em;
@@ -136,7 +144,7 @@ select {
 	width: 6em;
 }
 
-.object-default-value-input {
+.object-default-data-input {
 	width: 6em;
 }
 
