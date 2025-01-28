@@ -561,10 +561,6 @@ int encodeSII(const std::string& inputfile, std::string output = "", const std::
 	return 0;
 }
 
-void encodeJSON(const auto& jsonObj) {
-
-}
-
 int main(int argc, char* argv[])
 {
 	printf("%s v%s\n",APP_NAME,APP_VERSION);
@@ -715,16 +711,69 @@ int main(int argc, char* argv[])
 				return HttpResponse{200, obj};
 			});
 
-		server.when("/export")
+		server.whenMatching("/export/[^/]+")
 			// Handle when data is posted here (POST)
 			->posted([](const HttpRequest& req) {
-				const auto& data = req.json();
+				printf("Path: '%s'\n",req.getPath().c_str());
+				const char* devicename = basename(req.getPath().c_str());
+
+				printf("Content:\n");
+				printf("%s\n",req.content().c_str());
+
+				std::string outdir(devicename);
+				outdir += "_out";
+
+				if(outdir.at(outdir.size()-1) != '/') outdir += '/';
+				if(outdir.at(0) != '/') {
+					char cwd[PATH_MAX];
+					if (getcwd(cwd, sizeof(cwd)) != NULL) {
+						std::string outdir2(cwd);
+						outdir2 += "/" + outdir;
+						outdir = outdir2;
+					} else {
+						perror("getcwd() error");
+						return HttpResponse{507};
+					}
+				}
+
+				struct stat st;
+				if(stat(outdir.c_str(),&st) == 0) {
+					if(!S_ISDIR(st.st_mode)) {
+						printf("'%s' is not a directory\n",outdir.c_str());
+						return HttpResponse{507};
+					}
+				} else {
+					printf("Creating empty directory '%s'\n",outdir.c_str());
+					if(mkdir(outdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)) {
+						printf("Failed creating '%s' (%d)\n",outdir.c_str(),errno);
+						return HttpResponse{507};
+					}
+				}
+
+				std::ofstream xmlout;
+				std::string outfile(outdir);
+				outfile += devicename;
+				outfile += ".xml";
+				remove(outfile.c_str());
+				xmlout.open(outfile.c_str(), std::ios::out | std::ios::trunc);
+				xmlout << req.content();
+				xmlout.close();
+
+				verbose = true;
+				writeobjectdict = true;
+				std::string siiFile(devicename);
+				siiFile += "_sii.bin";
+
+				encodeSII(outfile,siiFile,outdir);
+				printf("Wrote XML to '%s'\n",outfile.c_str());
+
+/*				const auto& data = req.json();
 
 				// If the parsed data is not an object, ignore
 				if (!data.isObject())
 				return HttpResponse{400, "text/plain", "Invalid JSON"};
 
-				encodeJSON(data);
+				encodeJSON(data);*/
 
 				// Export to XML and encodeSII
 				return HttpResponse{200};

@@ -770,7 +770,7 @@ void ESIXML::parseXMLDevice(const tinyxml2::XMLElement* xmldevice) {
 				if(0 == strcmp(attr->Name(),"DefaultSize")) {
 					sm->defaultsize = attr->UnsignedValue();
 					if(0 == sm->defaultsize) sm->defaultsize = EC_SII_HexToUint32(attr->Value());
-					if(0 == sm->defaultsize) printf("Failed to decipher SyncManager DefaultSize\n");
+					if(0 == sm->defaultsize) printf("Failed to decipher SyncManager DefaultSize or DefaultSize=0\n");
 					if(verbose) printf("Device/Sm/@DefaultSize: 0x%.04X\n",sm->defaultsize);
 				} else
 				if(0 == strcmp(attr->Name(),"Enable")) { // hexdecvalue

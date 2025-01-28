@@ -1376,7 +1376,7 @@ function fillMandatoryObjects() {
 		let subIdx = 1;
 		pdoObjects[pdoRXVal].forEach((rxpdo) => {
 			smObjDict.subitems.push(
-				createSubItem(subIdx++,null,null,rxpdo.index.toString())
+				createSubItem(subIdx++,null,null,formatHexRaw(parseInt(rxpdo.index,16),4))
 			);
 		});
 		mandatoryObjects.push(smObjDict);
@@ -1707,7 +1707,6 @@ function exportDevice2XML() {
 		XML.writeStartElement("Devices");
 			XML.writeStartElement("Device");
 			XML.writeAttributeString("Physics","YY"); // TODO not hardcode
-			XML.writeStartElement("Device")
 				XML.writeStartElement("Type")
 				XML.writeAttributeString("ProductCode",hex2XML(currentDevice.productCode));
 				XML.writeAttributeString("RevisionNo",hex2XML(currentDevice.revisionNo));
@@ -1757,115 +1756,115 @@ function exportDevice2XML() {
 							XML.writeEndElement(); // DataType
 						});
 						XML.writeEndElement(); // DataTypes
-					XML.writeEndElement(); // Dictionary
 
-					XML.writeStartElement("Objects");
-					let collection = [mandatoryObjects,currentDevice.objects];
-					collection.forEach((objects) => {
-						objects.forEach((obj) => {
-							XML.writeStartElement("Object");
-								XML.writeElementString("Index",hex2XML(obj.index));
-								XML.writeElementString("Name",obj.subitems[0].name);
-								if(variableStr == obj.type) {
-									let dt = obj.subitems[0].datatype.toUpperCase();
-									if(dt.indexOf("STRING") != -1) {
-										let datalength = 0;
-										if(obj.subitems[0].defaultData !== undefined) {
-											datalength = obj.subitems[0].defaultData.length;
-										}
-										let stringDTName = "STRING("+datalength+")";
-										XML.writeElementString("Type",stringDTName);
-										dataTypes.every((datatype) => {
-											if(datatype.Name == stringDTName) {
-												XML.writeElementString("BitSize",datatype.BitSize.toString());
-												return false;
+						XML.writeStartElement("Objects");
+						let collection = [mandatoryObjects,currentDevice.objects];
+						collection.forEach((objects) => {
+							objects.forEach((obj) => {
+								XML.writeStartElement("Object");
+									XML.writeElementString("Index",hex2XML(obj.index));
+									XML.writeElementString("Name",obj.subitems[0].name);
+									if(variableStr == obj.type) {
+										let dt = obj.subitems[0].datatype.toUpperCase();
+										if(dt.indexOf("STRING") != -1) {
+											let datalength = 0;
+											if(obj.subitems[0].defaultData !== undefined) {
+												datalength = obj.subitems[0].defaultData.length;
 											}
-											return true;
-										});
-										if(datalength > 0) {
-											XML.writeStartElement("Info");
-												XML.writeElementString("DefaultData",str2asciiStr(obj.subitems[0].defaultData));
-											XML.writeEndElement(); // Info
-										}
-									} else {
-										XML.writeElementString("Type",obj.subitems[0].datatype);
-										dataTypes.every((datatype) => {
-											if(datatype.Name == dt) {
-												XML.writeElementString("BitSize",datatype.BitSize.toString());
-												return false;
-											}
-											return true;
-										});
-									}
-									if(obj.subitems[0].access !== undefined) {
-										XML.writeStartElement("Flags");
-											XML.writeElementString("Access",obj.subitems[0].access);
-										XML.writeEndElement() // Flags;
-									}
-								} else if(recordStr == obj.type || arrayStr == obj.type) {
-									let name = obj.subitems[0].name;
-									if(name === undefined || name == null || name == "") name = "Unnamed";
-									let dtName = "DT"+formatHexRaw(obj.index,4);
-									let datatype = null;
-									XML.writeElementString("Type",dtName);
-									dataTypes.every((dt) => {
-										if(dt.Name == dtName) {
-											datatype = dt;
-											XML.writeElementString("BitSize",dt.BitSize.toString());
-											return false;
-										}
-										return true;
-									});
-									XML.writeStartElement("Info");
-									obj.subitems.forEach((subitem,index) => {
-										XML.writeStartElement("SubItem");
-										if(index == 0) {
-											XML.writeElementString("Name","SubIndex 000");
-											let length = formatHexRaw(obj.subitems.length-1,2);
-											XML.writeStartElement("Info");
-											XML.writeElementString("DefaultData",length);
-											XML.writeEndElement(); // Info
-										} else {
-											if(recordStr == obj.type) {
-												if(subitem.name !== undefined && subitem.name != "")
-													XML.writeElementString("Name", subitem.name);
-												XML.writeStartElement("Info");
-												if(subitem.defaultData !== undefined &&
-												   subitem.defaultData != null &&
-												   subitem.defaultData != "")
-												{
-													// TODO endianess?
-													XML.writeElementString("DefaultData",subitem.defaultData);
-												} else {
-													let zeros = (parseInt(datatype.subitems[index].BitSize)/8)*2;
-													XML.writeElementString("DefaultData",formatHexRaw(0,zeros));
+											let stringDTName = "STRING("+datalength+")";
+											XML.writeElementString("Type",stringDTName);
+											dataTypes.every((datatype) => {
+												if(datatype.Name == stringDTName) {
+													XML.writeElementString("BitSize",datatype.BitSize.toString());
+													return false;
 												}
+												return true;
+											});
+											if(datalength > 0) {
+												XML.writeStartElement("Info");
+													XML.writeElementString("DefaultData",str2asciiStr(obj.subitems[0].defaultData));
+												XML.writeEndElement(); // Info
+											}
+										} else {
+											XML.writeElementString("Type",obj.subitems[0].datatype);
+											dataTypes.every((datatype) => {
+												if(datatype.Name == dt) {
+													XML.writeElementString("BitSize",datatype.BitSize.toString());
+													return false;
+												}
+												return true;
+											});
+										}
+										if(obj.subitems[0].access !== undefined) {
+											XML.writeStartElement("Flags");
+												XML.writeElementString("Access",obj.subitems[0].access);
+											XML.writeEndElement() // Flags;
+										}
+									} else if(recordStr == obj.type || arrayStr == obj.type) {
+										let name = obj.subitems[0].name;
+										if(name === undefined || name == null || name == "") name = "Unnamed";
+										let dtName = "DT"+formatHexRaw(obj.index,4);
+										let datatype = null;
+										XML.writeElementString("Type",dtName);
+										dataTypes.every((dt) => {
+											if(dt.Name == dtName) {
+												datatype = dt;
+												XML.writeElementString("BitSize",dt.BitSize.toString());
+												return false;
+											}
+											return true;
+										});
+										XML.writeStartElement("Info");
+										obj.subitems.forEach((subitem,index) => {
+											XML.writeStartElement("SubItem");
+											if(index == 0) {
+												XML.writeElementString("Name","SubIndex 000");
+												let length = formatHexRaw(obj.subitems.length-1,2);
+												XML.writeStartElement("Info");
+												XML.writeElementString("DefaultData",length);
 												XML.writeEndElement(); // Info
 											} else {
-												let name = "SubIndex " + formatDec(index,3);
-												XML.writeElementString("Name",name);
-												XML.writeStartElement("Info");
-												if(subitem.defaultData !== undefined &&
-												   subitem.defaultData !== null &&
-												   subitem.defaultData != "")
-												{
-													// TODO endianess? formatHexRaw?
-													XML.writeElementString("DefaultData",subitem.defaultData);
+												if(recordStr == obj.type) {
+													if(subitem.name !== undefined && subitem.name != "")
+														XML.writeElementString("Name", subitem.name);
+													XML.writeStartElement("Info");
+													if(subitem.defaultData !== undefined &&
+													subitem.defaultData != null &&
+													subitem.defaultData != "")
+													{
+														// TODO endianess?
+														XML.writeElementString("DefaultData",subitem.defaultData);
+													} else {
+														let zeros = (parseInt(datatype.subitems[index].BitSize)/8)*2;
+														XML.writeElementString("DefaultData",formatHexRaw(0,zeros));
+													}
+													XML.writeEndElement(); // Info
 												} else {
-													let zeros = (parseInt(getBitSize(datatype.BaseType))/8)*2;
-													XML.writeElementString("DefaultData",formatHexRaw(0,zeros));
+													let name = "SubIndex " + formatDec(index,3);
+													XML.writeElementString("Name",name);
+													XML.writeStartElement("Info");
+													if(subitem.defaultData !== undefined &&
+													subitem.defaultData !== null &&
+													subitem.defaultData != "")
+													{
+														// TODO endianess? formatHexRaw?
+														XML.writeElementString("DefaultData",subitem.defaultData);
+													} else {
+														let zeros = (parseInt(getBitSize(datatype.BaseType))/8)*2;
+														XML.writeElementString("DefaultData",formatHexRaw(0,zeros));
+													}
+													XML.writeEndElement(); // Info
 												}
-												XML.writeEndElement(); // Info
 											}
-										}
-										XML.writeEndElement(); // SubItem
-									});
-									XML.writeEndElement() // Info;
-								}
-							XML.writeEndElement(); // Object
+											XML.writeEndElement(); // SubItem
+										});
+										XML.writeEndElement() // Info;
+									}
+								XML.writeEndElement(); // Object
+							});
 						});
-					});
-					XML.writeEndElement(); // Objects
+						XML.writeEndElement(); // Objects
+					XML.writeEndElement(); // Dictionary
 				XML.writeEndElement(); // Profile
 
 				// TODO: Should we decide this somewhere?
@@ -1881,6 +1880,7 @@ function exportDevice2XML() {
 					XML.writeAttributeString("StartAddress",hex2XML(sm.StartAddress.toString(16)));
 					XML.writeAttributeString("ControlByte",hex2XML(sm.ControlByte.toString(16)));
 					XML.writeAttributeString("Enable",sm.Enable);
+					XML.writeXML(sm.Description);
 					XML.writeEndElement(); // Sm	
 				});
 
@@ -1999,5 +1999,20 @@ function exportDevice2XML() {
 
 	XML.writeEndElement();
 	XML.writeEndDocument();
-	console.log(XML.flush());
+//	console.log(XML.flush());
+
+	let xmlDocument = XML.flush();
+	console.log(xmlDocument);
+	let xhr = new XMLHttpRequest();
+// 
+	xhr.open("POST", "/export/"+currentDevice.name, true);
+	xhr.setRequestHeader("Content-Type", "text/xml");
+	xhr.onreadystatechange = () => {
+		if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
+			console.log("exported");
+		}
+		// TODO failure handling
+	};
+	
+	xhr.send(xmlDocument);
 }

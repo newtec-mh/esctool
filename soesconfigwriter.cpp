@@ -275,6 +275,19 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 		return (const char*)NULL;
 	};
 
+	auto isArray = [&](Object* o) {
+		DataType* dt = o->datatype;
+		if(dt == NULL) {
+			dt = findDT(o->type);
+			if(dt->subitems.size() > 0) {
+				if(dt->subitems[1]->subindex == 0) {
+					return true;
+				}
+			}
+		}
+		return dt->arrayinfo != NULL;
+	};
+
 	if(dev->profile && dev->profile->dictionary) {
 		std::ofstream typesout;
 		typesout.open((m_outputdir + utypesfile).c_str(), std::ios::out | std::ios::trunc);
@@ -645,7 +658,9 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 							}
 						} else if(NULL != obj->defaultdata) {
 							// TODO: can we assume data is hex or smth? HexDecStr...
-							out << "0x" << std::hex;
+							if(strncmp(obj->defaultdata,"0x",2))
+								out << "0x";
+							out << std::hex;
 							if(m_input_endianness_is_little) {
 								for(size_t i = strlen(obj->defaultdata); i > 0; i-=2) {
 									char s[3];
@@ -731,8 +746,8 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 				if(o->subitems.empty()) {
 					out << "OTYPE_VAR";
 				} else {
-					if(NULL != o->datatype && NULL != o->datatype->arrayinfo)
-					{
+					if(isArray(o)) {
+						printf("%04X is OTYPE_ARRAY ('%s')\n",index,o->type);
 						out << "OTYPE_ARRAY";
 					} else {
 						out << "OTYPE_RECORD";
