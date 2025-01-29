@@ -683,7 +683,8 @@ function addObject(container,predefined) {
 		newObject.object = object;
 		let index = container.address.begin;
 		if(container.objects !== undefined && container.objects.length > 0) {
-			index = container.address.begin + (container.objects.length*0x10);
+			let lastIndex = parseInt(container.objects[container.objects.length-1].object.index,16);
+			index = (lastIndex+0x10);
 		}
 		let newSubIndex = addSubIndex(newObject,index,0);
 		newObject.appendChild(newSubIndex);
@@ -1691,7 +1692,7 @@ function exportDevice2XML() {
 	XML.writeAttributeString("Version","1.6");
 
 	XML.writeStartElement("Vendor");
-		XML.writeElementString("ID",hex2XML(setup.setups[selectedSetup].vendorid));
+		XML.writeElementString("Id",hex2XML(setup.setups[selectedSetup].vendorid));
 		XML.writeStartElement("Name");
 		XML.writeCDATA(setup.setups[selectedSetup].vendorname);
 		XML.writeEndElement();
@@ -2003,6 +2004,7 @@ function exportDevice2XML() {
 
 	let xmlDocument = XML.flush();
 	console.log(xmlDocument);
+	console.log("Document size: "+xmlDocument.length+" bytes");
 	let xhr = new XMLHttpRequest();
 // 
 	xhr.open("POST", "/export/"+currentDevice.name, true);

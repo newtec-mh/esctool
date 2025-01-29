@@ -5,6 +5,7 @@ body {
 	padding-left: 0px;
 	padding-right: 0px;
 	padding-top: 2em;
+	margin-bottom: 3em;
 }
 
 div {
@@ -142,6 +143,10 @@ select {
 
 .object-datatype-input {
 	width: 6em;
+}
+
+.object-name-input {
+	width: 22em;
 }
 
 .object-default-data-input {

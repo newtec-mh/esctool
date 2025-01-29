@@ -14,6 +14,9 @@ if(${GTK_UI} STREQUAL "yes")
 	add_definitions(-DGTK_UI)
 endif()
 
+# Raise the max http content size for tinyhttp to 1MB
+add_definitions(-DMAX_HTTP_CONTENT_SIZE=1048576)
+
 # Include paths
 include_directories(
   ${SLAVECONFIGTOOL_SOURCE_DIR}
