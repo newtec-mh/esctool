@@ -206,15 +206,32 @@ function loadSetup(currentSetup) {
 }
 
 function loadSetups() {
-	let configurationsObjStr = localStorage.getItem(localStorageName);
-	if(configurationsObjStr !== undefined && configurationsObjStr != null) {
-		setup = JSON.parse(configurationsObjStr);
-		loadSetup(setup.setups[selectedSetup]);
-	} else writeConsole("No set up found.");
+	let xhr = new XMLHttpRequest;
+	xhr.open("GET", "/setup", true);
+	xhr.setRequestHeader("Content-Type", "application/json");
+	xhr.onreadystatechange = () => {
+		if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
+			console.log("Loaded setup from disk.");
+			setup = JSON.parse(xhr.responseText);
+			loadSetup(setup.setups[selectedSetup]);
+		}
+	};
+	xhr.send();
 }
 
 function saveSetup() {
-	localStorage.setItem(localStorageName,JSON.stringify(setup));
+//	localStorage.setItem(localStorageName,JSON.stringify(setup));
+	let xhr = new XMLHttpRequest();
+
+	xhr.open("POST", "/setup", true);
+	xhr.setRequestHeader("Content-Type", "application/json");
+	xhr.onreadystatechange = () => {
+		if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
+			console.log("Saved setup to disk.");
+		}
+	};
+	xhr.send(JSON.stringify(setup,null,2));
+
 }
 
 function initDevice(device) {
@@ -747,6 +764,13 @@ function initUI() {
 			writeConsole("Saved set up");
 		};
 
+		let loadButton = document.createElement("button");
+		loadButton.className = "control-button load-button";
+		loadButton.innerHTML = "Load";
+		loadButton.onclick = (event) => {
+			loadSetups();
+		};
+
 		let exportButton = document.createElement("button");
 		exportButton.className = "control-button export-button";
 		exportButton.innerHTML = "Export";
@@ -768,6 +792,7 @@ function initUI() {
 		};
 
 		esctool.appendChild(saveButton);
+		esctool.appendChild(loadButton);
 		esctool.appendChild(exportButton);
 		esctool.appendChild(clearButton);
 	}

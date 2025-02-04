@@ -42,6 +42,10 @@ select {
 	float: left;
 }
 
+.load-button {
+	float: left;
+}
+
 .export-button {
 	float: left;
 }

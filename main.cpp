@@ -682,33 +682,28 @@ int main(int argc, char* argv[])
 		server.when("/setup")
 			// Handle when data is posted here (POST)
 			->posted([](const HttpRequest& req) {
-				const auto& data = req.json();
-
-				// If the parsed data is not an object, ignore
-				if (!data.isObject())
-				return HttpResponse{400, "text/plain", "Invalid JSON"};
-
-//				const auto& jNumber = data["value"];
-
-				// Check if the data with the key "value" is a number
-//				if (!jNumber.isNumber())
-
-//				return HttpResponse{400, "text/plain", "Value is not a number"};
-				
-				// Set the number by parsing the raw request body
-//				myNumber = static_cast<int>(jNumber.toDouble());
+				std::string outfileName(APP_NAME);
+				outfileName += ".json";
+				std::ofstream jsonOut;
+				jsonOut.open(outfileName.c_str(), std::ios::out | std::ios::trunc);
+				jsonOut << req.content();
+				jsonOut.close();
+				printf("Wrote config to '%s'\n",outfileName.c_str());
 				return HttpResponse{200};
 			})
 			// Handle when data is requested from here (GET)
 			->requested([](const HttpRequest& req) {
-				// Create a new JSON object
-				miniJson::Json::_object obj;
-
-//				// Add a new key "value" to it, set to myNumber
-//				obj["value"] = myNumber;
-
-				// Respond with json
-				return HttpResponse{200, obj};
+				std::string inFilename(APP_NAME);
+				inFilename += ".json";
+				std::ifstream ist;
+				ist.open(inFilename.c_str(),std::ios::in);
+				if(!ist.is_open()) return HttpResponse{404};
+				ist.seekg(0);
+				std::stringstream setup("");
+				setup << ist.rdbuf();
+				if(ist.bad()) return HttpResponse{404};
+				ist.close();
+				return HttpResponse{200, "application/json", setup.str()};
 			});
 
 		server.whenMatching("/export/[^/]+")
