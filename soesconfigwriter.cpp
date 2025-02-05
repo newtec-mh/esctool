@@ -38,7 +38,7 @@ SOESConfigWriter::SOESConfigWriter(const std::string& outdir, bool input_endiann
 
 SOESConfigWriter::~SOESConfigWriter() {};
 
-void SOESConfigWriter::writeSSCFiles(Device* dev) {
+void SOESConfigWriter::writeSSCFiles(Device* dev, OutputParams params) {
 	uint16_t dynrxpdo = 0;
 	uint16_t dyntxpdo = 0;
 	for(Pdo* pdo : dev->rxpdo) if(!pdo->fixed) ++dynrxpdo;
@@ -339,7 +339,7 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 						typesout << "\t";
 						typesout << getCType(type);
 						typesout << " ";
-						typesout << CNameify(si->name);
+						typesout << CNameify(si->name,params.capitalizeStructMembers);
 						typesout << ";";
 						typesout << " /* "; 
 						typesout << std::uppercase
@@ -354,22 +354,38 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 						++subitem;
 					}
 					typesout << "} _" << CNameify(o->name,true) << ";\n\n";
-					typesout << "extern _"
-						<< CNameify(o->name,true)
-						<< " "
-						<< CNameify(o->name,true)
-						<< ";\n\n";
+					typesout << "extern _";
+					typesout << CNameify(o->name,true);
+					typesout << " ";
+					typesout << CNameify(o->name,true);
+					if(params.appendObjectIndexToStructs) {
+						typesout << "0x";
+						typesout << std::uppercase
+							 << std::hex
+							 << std::setfill('0')
+							 << std::setw(4)
+							 << index;
+					}	
+					typesout << ";\n\n";
 				} else {
 					const char* type = o->datatype ? 
 						(o->datatype->type ? o->datatype->type :
 							o->datatype->name) :
 						o->type;
-					typesout << "extern"
-							<< " "
-							<< getCType(type)
-							<< " "
-							<< CNameify(o->name)
-							<< ";\n\n";
+					typesout << "extern";
+					typesout << " ";
+					typesout << getCType(type);
+					typesout << " ";
+					typesout << CNameify(o->name,params.capitalizeStructMembers);
+					if(params.appendObjectIndexToStructs) {
+						typesout << "0x";
+						typesout << std::uppercase
+							 << std::hex
+							 << std::setfill('0')
+							 << std::setw(4)
+							 << index;
+					}	
+					typesout << ";\n\n";
 				}
 			}
 			typesout << "#endif /* UTYPES_H */\n";
@@ -397,7 +413,7 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 
 			for(Module* mod : *(dev->modules)) {
 				out << "#define " << CNameify(mod->type,true) << "_IDENT" << "\t\t(" << (int)(mod->ident) << ")\n";
-				out << "typedef struct " << CNameify(mod->type) << " {\n";
+				out << "typedef struct " << CNameify(mod->type,params.capitalizeStructMembers) << " {\n";
 				out << std::hex;
 				for(Pdo* p : mod->rxpdo) {
 					out << "\t/* RXPDO @ 0x" << std::uppercase << p->index << " */\n";
@@ -408,7 +424,7 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 						out << "\t"
 						    << getCType(e->datatype)
 						    << " "
-						    << CNameify(e->name)
+						    << CNameify(e->name,params.capitalizeStructMembers)
 						    << "; /* "
 						    << std::setfill('0')
 						    << std::setw(4)
@@ -430,7 +446,7 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 						out << "\t"
 						    << getCType(e->datatype)
 						    << " "
-						    << CNameify(e->name)
+						    << CNameify(e->name,params.capitalizeStructMembers)
 						    << "; /* "
 						    << std::setfill('0')
 						    << std::setw(4)
@@ -443,7 +459,7 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 					if(p != mod->txpdo.back()) out << "\n";
 				}
 				out << std::dec;
-				out << "} " << CNameify(mod->type) << "_t;\n\n";
+				out << "} " << CNameify(mod->type,params.capitalizeStructMembers) << "_t;\n\n";
 			}
 			out << "#endif /* __" << CNameify(dev->name,true) << "_MODULES_H__ */\n";
 			out.close();
@@ -518,7 +534,7 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 			}
 			out << "\n";
 
-			auto writeObject = [this,&out,&findDT,&deduceDT,&dynrxpdo,&dyntxpdo]
+			auto writeObject = [this,&out,&findDT,&deduceDT,&dynrxpdo,&dyntxpdo,&params]
 				(Object* obj, Object* parent, int& subitem, const int nitems, Dictionary* dict = NULL)
 			{
 				bool objref = false;
@@ -680,14 +696,30 @@ void SOESConfigWriter::writeSSCFiles(Device* dev) {
 						if(0 == nitems) {
 							out << "0, ";
 							out << "&";
-							out << CNameify(obj->name);
+							out << CNameify(obj->name,params.capitalizeStructMembers);
+							if(params.appendObjectIndexToStructs) {
+								out << "0x"
+								<< std::hex
+								<< std::setfill('0')
+								<< std::setw(4)
+								<< std::uppercase
+								<< index;
+							}
 							out << " }";
 						} else {
 							out << "0, ";
-							out << "&("
-							<< CNameify(parent->name,true)
-							<< "."
-							<< CNameify(obj->name);
+							out << "&(";
+							out << CNameify(parent->name,true);
+							if(params.appendObjectIndexToStructs) {
+								out << "0x"
+								<< std::hex
+								<< std::setfill('0')
+								<< std::setw(4)
+								<< std::uppercase
+								<< index;
+							}
+							out << ".";
+							out << CNameify(obj->name,params.capitalizeStructMembers);
 							out << ") }";
 						}
 					}

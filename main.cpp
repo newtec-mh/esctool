@@ -3,8 +3,8 @@
  * 
  * @author Martin Hejnfelt (mh@newtec.dk)
  * @brief EtherCAT Slave Controller tool
- * @version 0.1
- * @date 2022-10-06
+ * @version 0.2
+ * @date 2025-02-04
  * 
  * @copyright Copyright (c) 2022 Newtec A/S
  *
@@ -48,6 +48,8 @@ bool very_verbose = false;
 bool writeobjectdict = false;
 bool nosii = false;
 bool encodepdo = false; // Put PDOs in SII EEPROM
+bool capitalizeStructMembers = false;
+bool indexPostfixStructs = false;
 
 // Decide if input from XML should be treated as LE
 bool input_endianness_is_little = false;
@@ -59,6 +61,8 @@ void printUsage(const char* name) {
 	printf("\t --verbose/-v : Flood some more information to stdout when applicable\n");
 	printf("\t --nosii/-n : Don't generate SII EEPROM binary (only for !--decode)\n");
 	printf("\t --dictionary/-d : Generate SSC object dictionary (default if --nosii and !--decode)\n");
+	printf("\t --index-postfix-structs/-ips : Append object index to structs, eg. OUTPUTS becomes OUTPUTS0x7000.");
+	printf("\t --capitalize-struct-members/-csm : Make member names in structs all capitalizes eg. OUTPUTS.outputs0 becomes OUTPUTS.OUTPUTS0.");
 	printf("\t --encodepdo/-ep : Encode PDOs to SII EEPROM\n");
 	printf("\t --output-directory/-odir : Specify output directory (created if non-existant)\n");
 	printf("\t --output/-o : Specify output SII filename\n");
@@ -550,7 +554,7 @@ int encodeSII(const std::string& inputfile, std::string output = "", const std::
 		NULL != dev->profile->dictionary)
 		{
 			SOESConfigWriter sscwriter(outdir,input_endianness_is_little);
-			sscwriter.writeSSCFiles(dev);
+			sscwriter.writeSSCFiles(dev,{ .capitalizeStructMembers = capitalizeStructMembers, .appendObjectIndexToStructs = indexPostfixStructs });
 		}
 
 		// TODO: Delete it all...
@@ -616,6 +620,16 @@ int main(int argc, char* argv[])
 		   0 == strcmp(argv[i],"-d"))
 		{
 			writeobjectdict = true;
+		} else
+		if(0 == strcmp(argv[i],"--capitalize-struct-members") ||
+		   0 == strcmp(argv[i],"-csm"))
+		{
+			capitalizeStructMembers = true;
+		} else
+		if(0 == strcmp(argv[i],"--index-postfix-structs") ||
+		   0 == strcmp(argv[i],"-ips"))
+		{
+			indexPostfixStructs = true;
 		} else
 		if(0 == strcmp(argv[i],"--output-directory") ||
 		   0 == strcmp(argv[i],"-odir"))
@@ -754,7 +768,6 @@ int main(int argc, char* argv[])
 				xmlout << req.content();
 				xmlout.close();
 
-				verbose = true;
 				writeobjectdict = true;
 				std::string siiFile(devicename);
 				siiFile += "_sii.bin";
@@ -762,15 +775,6 @@ int main(int argc, char* argv[])
 				encodeSII(outfile,siiFile,outdir);
 				printf("Wrote XML to '%s'\n",outfile.c_str());
 
-/*				const auto& data = req.json();
-
-				// If the parsed data is not an object, ignore
-				if (!data.isObject())
-				return HttpResponse{400, "text/plain", "Invalid JSON"};
-
-				encodeJSON(data);*/
-
-				// Export to XML and encodeSII
 				return HttpResponse{200};
 			});
 

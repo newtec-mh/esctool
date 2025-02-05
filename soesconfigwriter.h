@@ -7,7 +7,7 @@ class SOESConfigWriter : public SSCWriter {
 public:
 	SOESConfigWriter(const std::string& outdir = "", bool input_endianness_is_little = false);
 	virtual ~SOESConfigWriter();
-	void writeSSCFiles(Device* dev) override;
+	void writeSSCFiles(Device* dev, OutputParams params) override;
 private:
 	std::string m_outputdir;
 	bool m_input_endianness_is_little;

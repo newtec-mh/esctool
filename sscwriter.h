@@ -4,8 +4,13 @@
 
 class SSCWriter {
 public:
+	struct OutputParams {
+		bool capitalizeStructMembers = false;
+		bool appendObjectIndexToStructs = false;
+	};
+
 	virtual ~SSCWriter() {};
-	virtual void writeSSCFiles(Device* dev) = 0;
+	virtual void writeSSCFiles(Device* dev, OutputParams params) = 0;
 protected:
 	SSCWriter() {};
 };
