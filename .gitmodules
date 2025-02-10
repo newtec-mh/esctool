@@ -7,3 +7,9 @@
 [submodule "MiniJson"]
 	path = MiniJson
 	url = https://github.com/zsmj2017/MiniJson
+[submodule "xmclib"]
+	path = examples/xmc4800_relax_io/xmclib
+	url = https://github.com/Infineon/mtb-xmclib-cat3.git
+[submodule "soes"]
+	path = examples/xmc4800_relax_io/soes
+	url = https://github.com/OpenEtherCATsociety/SOES
