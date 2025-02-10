@@ -53,6 +53,7 @@ bool indexPostfixStructs = false;
 
 // Decide if input from XML should be treated as LE
 bool input_endianness_is_little = false;
+std::string catalogFile("");
 
 void printUsage(const char* name) {
 	printf("Usage: %s [options] --input/-i <input-file>\n",name);
@@ -61,11 +62,12 @@ void printUsage(const char* name) {
 	printf("\t --verbose/-v : Flood some more information to stdout when applicable\n");
 	printf("\t --nosii/-n : Don't generate SII EEPROM binary (only for !--decode)\n");
 	printf("\t --dictionary/-d : Generate SSC object dictionary (default if --nosii and !--decode)\n");
-	printf("\t --index-postfix-structs/-ips : Append object index to structs, eg. OUTPUTS becomes OUTPUTS0x7000.");
-	printf("\t --capitalize-struct-members/-csm : Make member names in structs all capitalizes eg. OUTPUTS.outputs0 becomes OUTPUTS.OUTPUTS0.");
+	printf("\t --index-postfix-structs/-ips : Append object index to structs, eg. OUTPUTS becomes OUTPUTS0x7000.\n");
+	printf("\t --capitalize-struct-members/-csm : Make member names in structs all capitalizes eg. OUTPUTS.outputs0 becomes OUTPUTS.OUTPUTS0.\n");
 	printf("\t --encodepdo/-ep : Encode PDOs to SII EEPROM\n");
 	printf("\t --output-directory/-odir : Specify output directory (created if non-existant)\n");
 	printf("\t --output/-o : Specify output SII filename\n");
+	printf("\t --catalog/-c : Specify device catalog file explicitly (default: esctool.json)\n");
 	printf("\n");
 }
 
@@ -492,7 +494,7 @@ int encodeSII(const std::string& inputfile, std::string output = "", const std::
 					for(DataType* dt : datatype->subitems) {
 						if(siNo == 0) {
 							bitsize += dt->bitsize;
-							bitsize += 8; // Padding
+							bitsize += 8; // Padding/16 bit alignment
 						} else {
 							DataType* basedt = findDT(dt->type);
 							if(basedt && basedt->arrayinfo) {
@@ -507,6 +509,7 @@ int encodeSII(const std::string& inputfile, std::string output = "", const std::
 						++siNo;
 					}
 				}
+				bitsize += bitsize%16; // 16 bit alignment
 				if(datatype->bitsize != bitsize) {
 					printf("\033[0;31mWARNING:\033[0m Bitsize of datatype '%s' seems off (calculated %d vs. parsed %d)\n",datatype->name,bitsize,datatype->bitsize);
 					if(verbose) printDataTypeVerbose(datatype);
@@ -667,6 +670,11 @@ int main(int argc, char* argv[])
 		{
 			outputfile = argv[++i];
 		} else
+		if(0 == strcmp(argv[i],"--catalog") ||
+		   0 == strcmp(argv[i],"-c"))
+		{
+			catalogFile = argv[++i];
+		} else
 		if(0 == strcmp(argv[i],"--decode")) {
 			decode = true;
 			encode = false;
@@ -696,8 +704,12 @@ int main(int argc, char* argv[])
 		server.when("/setup")
 			// Handle when data is posted here (POST)
 			->posted([](const HttpRequest& req) {
-				std::string outfileName(APP_NAME);
-				outfileName += ".json";
+				std::string outfileName("");
+				if(catalogFile != "") outfileName = catalogFile;
+				else {
+					outfileName = APP_NAME;
+					outfileName += ".json";
+				}
 				std::ofstream jsonOut;
 				jsonOut.open(outfileName.c_str(), std::ios::out | std::ios::trunc);
 				jsonOut << req.content();
@@ -707,8 +719,12 @@ int main(int argc, char* argv[])
 			})
 			// Handle when data is requested from here (GET)
 			->requested([](const HttpRequest& req) {
-				std::string inFilename(APP_NAME);
-				inFilename += ".json";
+				std::string inFilename("");
+				if(catalogFile != "") inFilename = catalogFile;
+				else {
+					inFilename = APP_NAME;
+					inFilename += ".json";
+				}
 				std::ifstream ist;
 				ist.open(inFilename.c_str(),std::ios::in);
 				if(!ist.is_open()) return HttpResponse{404};
@@ -723,11 +739,11 @@ int main(int argc, char* argv[])
 		server.whenMatching("/export/[^/]+")
 			// Handle when data is posted here (POST)
 			->posted([](const HttpRequest& req) {
-				printf("Path: '%s'\n",req.getPath().c_str());
 				const char* devicename = basename(req.getPath().c_str());
-
-				printf("Content:\n");
-				printf("%s\n",req.content().c_str());
+				if(very_verbose) {
+					printf("XML document:\n");
+					printf("%s\n",req.content().c_str());
+				}
 
 				std::string outdir(devicename);
 				outdir += "_out";
@@ -752,7 +768,7 @@ int main(int argc, char* argv[])
 						return HttpResponse{507};
 					}
 				} else {
-					printf("Creating empty directory '%s'\n",outdir.c_str());
+					if(verbose) printf("Creating empty directory '%s'\n",outdir.c_str());
 					if(mkdir(outdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)) {
 						printf("Failed creating '%s' (%d)\n",outdir.c_str(),errno);
 						return HttpResponse{507};

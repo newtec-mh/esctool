@@ -107,7 +107,7 @@ void SOESConfigWriter::writeSSCFiles(Device* dev, OutputParams params) {
 					}
 				}
 			}
-			return (pdoSize & 0xF ? 1 : 0) + (pdoSize >> 3); // Divide bitsize by 8 + 1 for remainder
+			return (pdoSize % 8) + (pdoSize >> 3); // Divide bitsize by 8 + 1 for remainder
 		};
 
 		for(SyncManager* sm : dev->syncmanagers) {

@@ -1548,9 +1548,6 @@ function createDataTypes(datatypes) {
 					} else if(datatype !== null) {
 						let bitsize = getBitSize(dt);
 						if(datatype.subitems === undefined) datatype.subitems = [];
-
-						// 16-bit alignment
-						datatype.BitSize += (datatype.BitSize % 16);
 						let itemSubIdx = subitem.subidx;
 						if(itemSubIdx === undefined) itemSubIdx = subIdx;
 						let access = subitem.access;
@@ -1564,9 +1561,13 @@ function createDataTypes(datatypes) {
 							Access: access
 						});
 						datatype.BitSize += bitsize;
+						// 16-bit alignment
+						if(itemSubIdx == 0) datatype.BitSize += (datatype.BitSize%16);
 					}
 					++subIdx;
 				});
+				// 16-bit alignment
+				datatype.BitSize += (datatype.BitSize%16);
 				datatypes.push(datatype);
 			} else if(obj.type == variableStr) {
 				let subitem = obj.subitems[0];
@@ -2025,10 +2026,9 @@ function exportDevice2XML() {
 
 	XML.writeEndElement();
 	XML.writeEndDocument();
-//	console.log(XML.flush());
 
 	let xmlDocument = XML.flush();
-	console.log(xmlDocument);
+//	console.log(xmlDocument);
 	console.log("Document size: "+xmlDocument.length+" bytes");
 	let xhr = new XMLHttpRequest();
 // 
