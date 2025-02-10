@@ -6,14 +6,6 @@ set (SLAVECONFIGTOOL_VERSION_MAJOR 0)
 set (SLAVECONFIGTOOL_VERSION_MINOR 1)
 set (SLAVECONFIGTOOL_VERSION_PATCH 0)
 
-set(GTK_UI no CACHE STRING "Compile UI version")
-set_property(CACHE GTK_UI PROPERTY STRINGS yes no)
-
-if(${GTK_UI} STREQUAL "yes")
-	message(STATUS "GTK based UI enabled")
-	add_definitions(-DGTK_UI)
-endif()
-
 # Raise the max http content size for tinyhttp to 1MB
 add_definitions(-DMAX_HTTP_CONTENT_SIZE=1048576)
 
