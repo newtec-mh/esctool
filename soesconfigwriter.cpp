@@ -158,7 +158,9 @@ void SOESConfigWriter::writeSSCFiles(Device* dev, OutputParams params) {
 				configout << "#define SM2_smc          " << "0x" << std::hex << (uint32_t) sm->controlbyte << "\n";
 				configout << "#define SM2_act          " << (sm->enable ? 1 : 0) << "\n";
 				configout << "#define MAX_RXPDO_SIZE   " << std::dec << sm->defaultsize << "\n";
-				configout << "#define MAX_MAPPINGS_SM2 " << std::dec << dynrxpdo << "\n";
+				configout << "#ifndef MAX_MAPPINGS_SM2\n";
+				configout << "#define MAX_MAPPINGS_SM2 " << std::dec << dev->rxpdo.size() << "\n";
+				configout << "#endif /* MAX_MAPPINGS_SM2 */\n";
 				configout << "\n";
 			} else
 			if(0 == strcmp(sm->type,"Inputs")) { // TODO verify that the actual assigned SyncManager *is* 3
@@ -184,7 +186,9 @@ void SOESConfigWriter::writeSSCFiles(Device* dev, OutputParams params) {
 				configout << "#define SM3_smc          " << "0x" << std::hex << (uint32_t) sm->controlbyte << "\n";
 				configout << "#define SM3_act          " << (sm->enable ? 1 : 0) << "\n";
 				configout << "#define MAX_TXPDO_SIZE   " << std::dec << sm->defaultsize << "\n";
-				configout << "#define MAX_MAPPINGS_SM3 " << std::dec << dyntxpdo << "\n";
+				configout << "#ifndef MAX_MAPPINGS_SM3\n";
+				configout << "#define MAX_MAPPINGS_SM3 " << std::dec << dev->txpdo.size() << "\n";
+				configout << "#endif /* MAX_MAPPINGS_SM3 */\n";
 				configout << "\n";
 			}
 		}
@@ -815,7 +819,30 @@ void SOESConfigWriter::writeSSCFiles(Device* dev, OutputParams params) {
 				out << " },\n";
 			}
 			out << "objlist_end };\n";
-			out << "\n\n";
+
+			out << "\n";
+
+			if(dynrxpdo) {
+				out << "_" << sm2mappings_str << " " << sm2mappings_str << " = {\n";
+				out << "\t" << ".max_subindex = " << std::dec << (int)dynrxpdo << ",\n";
+				out << "\t" << ".subindex = {\n";
+				for(Pdo* pdo : dev->rxpdo) if(!pdo->fixed) out << "\t\t0x" << std::hex << std::uppercase << pdo->index << ",\n";
+				out << "\t}\n";
+				out << "};\n";
+			}
+
+			out << "\n";
+
+			if(dyntxpdo) {
+				out << "_" << sm3mappings_str << " " << sm3mappings_str << " = {\n";
+				out << "\t" << ".max_subindex = " << std::dec << (int)dyntxpdo << ",\n";
+				out << "\t" << ".subindex = {\n";
+				for(Pdo* pdo : dev->txpdo) if(!pdo->fixed) out << "\t\t0x" << std::hex << std::uppercase << pdo->index << ",\n";
+				out << "\t}\n";
+				out << "};\n";
+			}
+
+			out << "\n";
 
 			out.sync_with_stdio();
 			out.close();
