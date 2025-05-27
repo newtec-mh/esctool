@@ -44,6 +44,11 @@ void SOESConfigWriter::writeSSCFiles(Device* dev, OutputParams params) {
 	for(Pdo* pdo : dev->rxpdo) if(!pdo->fixed) ++dynrxpdo;
 	for(Pdo* pdo : dev->txpdo) if(!pdo->fixed) ++dyntxpdo;
 
+	uint16_t max_mappings_sm2 = 0;
+	uint16_t max_mappings_sm3 = 0;
+	for(Pdo* pdo : dev->rxpdo) max_mappings_sm2 += pdo->entries.size();
+	for(Pdo* pdo : dev->txpdo) max_mappings_sm3 += pdo->entries.size();
+
 	// TODO: If slots are predefined and fixed, they're not dynamic...
 	if(NULL != dev->slots) dynrxpdo += dev->slots->maxslotcount;
 	if(NULL != dev->slots) dyntxpdo += dev->slots->maxslotcount;
@@ -159,7 +164,7 @@ void SOESConfigWriter::writeSSCFiles(Device* dev, OutputParams params) {
 				configout << "#define SM2_act          " << (sm->enable ? 1 : 0) << "\n";
 				configout << "#define MAX_RXPDO_SIZE   " << std::dec << sm->defaultsize << "\n";
 				configout << "#ifndef MAX_MAPPINGS_SM2\n";
-				configout << "#define MAX_MAPPINGS_SM2 " << std::dec << dev->rxpdo.size() << "\n";
+				configout << "#define MAX_MAPPINGS_SM2 " << std::dec << max_mappings_sm2 << "\n";
 				configout << "#endif /* MAX_MAPPINGS_SM2 */\n";
 				configout << "\n";
 			} else
@@ -187,7 +192,7 @@ void SOESConfigWriter::writeSSCFiles(Device* dev, OutputParams params) {
 				configout << "#define SM3_act          " << (sm->enable ? 1 : 0) << "\n";
 				configout << "#define MAX_TXPDO_SIZE   " << std::dec << sm->defaultsize << "\n";
 				configout << "#ifndef MAX_MAPPINGS_SM3\n";
-				configout << "#define MAX_MAPPINGS_SM3 " << std::dec << dev->txpdo.size() << "\n";
+				configout << "#define MAX_MAPPINGS_SM3 " << std::dec << max_mappings_sm3 << "\n";
 				configout << "#endif /* MAX_MAPPINGS_SM3 */\n";
 				configout << "\n";
 			}
