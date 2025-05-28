@@ -6,6 +6,7 @@
 #include "esctoolhelpers.h"
 #include "esctool.h"
 #include "esctooldefs.h"
+#include "utilfunc.h"
 
 #define SOES_DEFAULT_BUFFER_PREALLOC_FACTOR 3
 std::string objectdictfile	= "objectlist.c";
@@ -543,7 +544,7 @@ void SOESConfigWriter::writeSSCFiles(Device* dev, OutputParams params) {
 			}
 			out << "\n";
 
-			auto writeObject = [this,&out,&findDT,&deduceDT,&dynrxpdo,&dyntxpdo,&params]
+			auto writeObject = [this,&out,&findDT,&deduceDT,&isArray,&dynrxpdo,&dyntxpdo,&params]
 				(Object* obj, Object* parent, int& subitem, const int nitems, Dictionary* dict = NULL)
 			{
 				bool objref = false;
@@ -554,7 +555,14 @@ void SOESConfigWriter::writeSSCFiles(Device* dev, OutputParams params) {
 
 				uint16_t index = obj->index & 0xFFFF;
 
-				DataType* datatype = obj->datatype ? obj->datatype : deduceDT(obj,subitem);
+				DataType* datatype = NULL;
+
+				if(isArray(obj) && 0 == subitem) {
+					datatype = findDT(obj->type);
+					if(datatype) datatype = datatype->subitems[0];
+				} else {
+					datatype = obj->datatype ? obj->datatype : deduceDT(obj,subitem);
+				}
 
 				const char* type = datatype ? datatype->type ? datatype->type : datatype->name : NULL;
 

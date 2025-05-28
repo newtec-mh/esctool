@@ -34,6 +34,7 @@ add_executable(esctool
   tinyhttp/http.hpp
   tinyxml2/tinyxml2.cpp
   tinyxml2/tinyxml2.h
+  utilfunc.cpp
   esctoolhelpers.cpp
   esixmlparsing.cpp
   soesconfigwriter.cpp

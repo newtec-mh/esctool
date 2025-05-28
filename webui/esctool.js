@@ -377,6 +377,7 @@ function addSubIndex(container,index,subIndexNo) {
 		{
 			container.objectDefaultDataInputField.value =
 				formatHex(container.object.subitems.length-1,2);
+			container.objectDefaultDataInputField.dispatchEvent(new Event('change'));
 		}
 	};
 
@@ -592,6 +593,7 @@ function addSubIndex(container,index,subIndexNo) {
 	newSubIndex.addrInputField = addrInputField;
 	newSubIndex.subIndexNo = subIndexNo;
 	newSubIndex.subIndexInputField = subIndexInputField;
+	newSubIndex.subIndexDataTypeInputField = subIndexDataTypeInputField;
 
 	if(subIndexNo == 0) {
 		let addSubIndexButton = document.createElement('button');
@@ -605,6 +607,7 @@ function addSubIndex(container,index,subIndexNo) {
 			container.appendChild(addSubIndex(container,index,lastSI+1));
 			if(typeSelector.value == arrayStr || typeSelector.value == recordStr) {
 				objectDefaultDataInputField.value = formatHex(container.object.subitems.length-1,2);
+				objectDefaultDataInputField.dispatchEvent(new Event('change'));
 			}
 		};
 		container.typeSelector = typeSelector;
@@ -652,9 +655,11 @@ function addSubIndex(container,index,subIndexNo) {
 
 	if(subIndexNo > 0) {
 		typeSelector.disabled = true;
+		if(container.typeSelector.value == arrayStr) {
+			subIndexDataTypeInputField.disabled = true;
+		}
 	} else {
 		populateSelector(typeSelector,typeOptions);
-		container.object.type = typeSelector.options.item(0).value;
 		typeSelector.onchange = (event) => {
 			container.object.type = typeSelector.value;
 			if(typeSelector.value == variableStr) {
@@ -663,11 +668,26 @@ function addSubIndex(container,index,subIndexNo) {
 				while(container.subitems.length > 1)
 					removeSubIndex(container.subitems.length-1);
 				objectDefaultDataInputField.disabled = false;
-			} else if(typeSelector.value == recordStr || typeSelector.value == arrayStr) {
+			} else if(typeSelector.value == recordStr) {
 				subIndexInputField.disabled = true;
 				container.addSubIndexButton.disabled = false;
 				objectDefaultDataInputField.disabled = true;
 				objectDefaultDataInputField.value = formatHex(container.object.subitems.length-1,2);
+				objectDefaultDataInputField.dispatchEvent(new Event('change'));
+				container.subitems.every((val,index) => {
+					if(0 != index) val.subIndexDataTypeInputField.disabled = false;
+					return true;
+				});
+			} else if(typeSelector.value == arrayStr) {
+				subIndexInputField.disabled = true;
+				container.addSubIndexButton.disabled = false;
+				objectDefaultDataInputField.disabled = true;
+				objectDefaultDataInputField.value = formatHex(container.object.subitems.length-1,2);
+				objectDefaultDataInputField.dispatchEvent(new Event('change'));
+				container.subitems.every((val,index) => {
+					if(0 != index) val.subIndexDataTypeInputField.disabled = true;
+					return true;
+				});
 			}
 		}
 		if(container.object.type !== undefined) {
@@ -1588,6 +1608,7 @@ function createDataTypes(datatypes) {
 				}
 			} else if(obj.type == arrayStr) {
 				let arrayInfo = obj.subitems[0];
+				console.log(arrayInfo);
 				let dt = arrayInfo.datatype !== undefined ?
 					arrayInfo.datatype.toUpperCase() : null;
 				if(dt == null) {
