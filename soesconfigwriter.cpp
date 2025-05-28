@@ -335,13 +335,15 @@ void SOESConfigWriter::writeSSCFiles(Device* dev, OutputParams params) {
 				if(!o->subitems.empty()) {
 					typesout << "typedef struct {\n";
 					int subitem = 0;
+					bool array = isArray(o);
+
 					for(Object* si : o->subitems) {
 						if(0 == subitem) {
 							++subitem;
 							continue;
 						}
 						DataType* dt = deduceDT(si,subitem);
-						const char* type = dt->type;
+						const char* type = array? dt->name : dt->type;
 						if(NULL == type) {
 							printf("WARNING: Could not determine C-datatype for '%s':'%s' ('%s')\n",o->name,si->name,(si->datatype?si->datatype->name:o->type));
 							continue;
