@@ -668,7 +668,7 @@ void SOESConfigWriter::writeSSCFiles(Device* dev, OutputParams params) {
 				out << ", ";
 
 				if(!objref) {
-					if((index <= 0x2000 || (0 == subitem || NULL == parent) && (0 != nitems))) {
+					if((index < 0x2000 || (0 == subitem || NULL == parent) && (0 != nitems))) {
 						if(0x1c12 == index && 0 != dynrxpdo) {
 							if(0 == subitem) {
 								out << "0x00, "
