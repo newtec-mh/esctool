@@ -660,6 +660,7 @@ function addSubIndex(container,index,subIndexNo) {
 		}
 	} else {
 		populateSelector(typeSelector,typeOptions);
+		container.object.type = typeSelector.options.item(0).value;
 		typeSelector.onchange = (event) => {
 			container.object.type = typeSelector.value;
 			if(typeSelector.value == variableStr) {
