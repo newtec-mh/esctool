@@ -660,7 +660,6 @@ function addSubIndex(container,index,subIndexNo) {
 		}
 	} else {
 		populateSelector(typeSelector,typeOptions);
-		container.object.type = typeSelector.options.item(0).value;
 		typeSelector.onchange = (event) => {
 			container.object.type = typeSelector.value;
 			if(typeSelector.value == variableStr) {
@@ -693,6 +692,8 @@ function addSubIndex(container,index,subIndexNo) {
 		}
 		if(container.object.type !== undefined) {
 			selectIndexWithValue(typeSelector,container.object.type);
+		} else {
+			container.object.type = typeSelector.options.item(0).value;
 		}
 	}
 
